@@ -24,7 +24,7 @@ func TestLoadTableSchema_WithPostgresContainer(t *testing.T) {
 
 	// Create a PostgreSQL container
 	container, err := postgres.Run(ctx,
-		"postgres:15",
+		"postgres:17",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
@@ -446,7 +446,7 @@ func TestLoadTableSchema_NonExistentTable(t *testing.T) {
 
 	// Create a PostgreSQL container
 	container, err := postgres.Run(ctx,
-		"postgres:15",
+		"postgres:17",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
@@ -1355,7 +1355,7 @@ func TestRegexPatternMatching(t *testing.T) {
 
 	// Create a PostgreSQL container
 	container, err := postgres.Run(ctx,
-		"postgres:15",
+		"postgres:17",
 		postgres.WithDatabase("testdb"),
 		postgres.WithUsername("testuser"),
 		postgres.WithPassword("testpass"),
