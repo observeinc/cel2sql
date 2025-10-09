@@ -87,13 +87,13 @@ func TestConvert(t *testing.T) {
 		{
 			name:    "startsWith",
 			args:    args{source: `name.startsWith("a")`},
-			want:    "STARTS_WITH(name, 'a')",
+			want:    "name LIKE 'a%'",
 			wantErr: false,
 		},
 		{
 			name:    "endsWith",
 			args:    args{source: `name.endsWith("z")`},
-			want:    "ENDS_WITH(name, 'z')",
+			want:    "name LIKE '%z'",
 			wantErr: false,
 		},
 		{
@@ -141,19 +141,19 @@ func TestConvert(t *testing.T) {
 		{
 			name:    "&&",
 			args:    args{source: `name.startsWith("a") && name.endsWith("z")`},
-			want:    "STARTS_WITH(name, 'a') AND ENDS_WITH(name, 'z')",
+			want:    "name LIKE 'a%' AND name LIKE '%z'",
 			wantErr: false,
 		},
 		{
 			name:    "||",
 			args:    args{source: `name.startsWith("a") || name.endsWith("z")`},
-			want:    "STARTS_WITH(name, 'a') OR ENDS_WITH(name, 'z')",
+			want:    "name LIKE 'a%' OR name LIKE '%z'",
 			wantErr: false,
 		},
 		{
 			name:    "()",
 			args:    args{source: `age >= 10 && (name.startsWith("a") || name.endsWith("z"))`},
-			want:    "age >= 10 AND (STARTS_WITH(name, 'a') OR ENDS_WITH(name, 'z'))",
+			want:    "age >= 10 AND (name LIKE 'a%' OR name LIKE '%z')",
 			wantErr: false,
 		},
 		{
@@ -411,7 +411,7 @@ func TestConvert(t *testing.T) {
 		{
 			name:    "fieldSelect_startsWith",
 			args:    args{source: `page.title.startsWith("test")`},
-			want:    "STARTS_WITH(page.title, 'test')",
+			want:    "page.title LIKE 'test%'",
 			wantErr: false,
 		},
 		{

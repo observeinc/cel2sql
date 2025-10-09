@@ -2,7 +2,6 @@ package cel2sql
 
 import (
 	"github.com/google/cel-go/common/operators"
-	"github.com/google/cel-go/common/overloads"
 )
 
 // standardSQLBinaryOperators maps CEL binary operators to PostgreSQL SQL operators
@@ -19,8 +18,7 @@ var standardSQLUnaryOperators = map[string]string{
 
 // standardSQLFunctions maps CEL function names to PostgreSQL function names
 var standardSQLFunctions = map[string]string{
-	operators.Modulo:     "MOD",
-	overloads.StartsWith: "STARTS_WITH",
-	overloads.EndsWith:   "ENDS_WITH",
+	operators.Modulo: "MOD",
+	// Note: overloads.StartsWith and overloads.EndsWith are handled specially in visitCallFunc
 	// Note: overloads.Matches is handled specially in visitCallFunc with RE2 to POSIX conversion
 }

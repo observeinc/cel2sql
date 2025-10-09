@@ -258,6 +258,80 @@ func (con *converter) callContains(target *exprpb.Expr, args []*exprpb.Expr) err
 	return nil
 }
 
+func (con *converter) callStartsWith(target *exprpb.Expr, args []*exprpb.Expr) error {
+	// CEL startsWith function: string.startsWith(prefix)
+	// Convert to PostgreSQL: string LIKE 'prefix%'
+	// or for more robust handling: LEFT(string, LENGTH(prefix)) = prefix
+
+	if target == nil || len(args) == 0 {
+		return errors.New("startsWith function requires both string and prefix arguments")
+	}
+
+	// Visit the string expression
+	nested := isBinaryOrTernaryOperator(target)
+	if err := con.visitMaybeNested(target, nested); err != nil {
+		return err
+	}
+
+	con.str.WriteString(" LIKE ")
+
+	// Visit the prefix argument and append '%' for LIKE pattern
+	// If it's a constant string, we can append % directly
+	if constExpr := args[0].GetConstExpr(); constExpr != nil && constExpr.GetStringValue() != "" {
+		prefix := constExpr.GetStringValue()
+		// Escape special LIKE characters: %, _, \
+		escaped := escapeLikePattern(prefix)
+		con.str.WriteString("'")
+		con.str.WriteString(escaped)
+		con.str.WriteString("%'")
+	} else {
+		// For non-literal patterns, concatenate with %
+		if err := con.visit(args[0]); err != nil {
+			return err
+		}
+		con.str.WriteString(" || '%'")
+	}
+
+	return nil
+}
+
+func (con *converter) callEndsWith(target *exprpb.Expr, args []*exprpb.Expr) error {
+	// CEL endsWith function: string.endsWith(suffix)
+	// Convert to PostgreSQL: string LIKE '%suffix'
+	// or for more robust handling: RIGHT(string, LENGTH(suffix)) = suffix
+
+	if target == nil || len(args) == 0 {
+		return errors.New("endsWith function requires both string and suffix arguments")
+	}
+
+	// Visit the string expression
+	nested := isBinaryOrTernaryOperator(target)
+	if err := con.visitMaybeNested(target, nested); err != nil {
+		return err
+	}
+
+	con.str.WriteString(" LIKE ")
+
+	// Visit the suffix argument and prepend '%' for LIKE pattern
+	// If it's a constant string, we can prepend % directly
+	if constExpr := args[0].GetConstExpr(); constExpr != nil && constExpr.GetStringValue() != "" {
+		suffix := constExpr.GetStringValue()
+		// Escape special LIKE characters: %, _, \
+		escaped := escapeLikePattern(suffix)
+		con.str.WriteString("'%")
+		con.str.WriteString(escaped)
+		con.str.WriteString("'")
+	} else {
+		// For non-literal patterns, concatenate with %
+		con.str.WriteString("'%' || ")
+		if err := con.visit(args[0]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (con *converter) callCasting(function string, _ *exprpb.Expr, args []*exprpb.Expr) error {
 	arg := args[0]
 	if function == overloads.TypeConvertInt && isTimestampType(con.getType(arg)) {
@@ -353,6 +427,10 @@ func (con *converter) visitCallFunc(expr *exprpb.Expr) error {
 	switch fun {
 	case overloads.Contains:
 		return con.callContains(target, args)
+	case overloads.StartsWith:
+		return con.callStartsWith(target, args)
+	case overloads.EndsWith:
+		return con.callEndsWith(target, args)
 	case overloads.Matches:
 		return con.callMatches(target, args)
 	case overloads.TypeConvertDuration:

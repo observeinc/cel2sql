@@ -121,7 +121,21 @@ func isNumericType(typ *exprpb.Type) bool {
 		return false
 	}
 	primitive := typ.GetPrimitive()
-	return primitive == exprpb.Type_INT64 || 
-		   primitive == exprpb.Type_UINT64 || 
+	return primitive == exprpb.Type_INT64 ||
+		   primitive == exprpb.Type_UINT64 ||
 		   primitive == exprpb.Type_DOUBLE
+}
+
+// String pattern utilities
+
+// escapeLikePattern escapes special characters in a LIKE pattern
+// PostgreSQL LIKE special characters are: % (matches any sequence), _ (matches any single char), \ (escape)
+func escapeLikePattern(pattern string) string {
+	// Escape backslashes first, then % and _
+	escaped := strings.ReplaceAll(pattern, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `%`, `\%`)
+	escaped = strings.ReplaceAll(escaped, `_`, `\_`)
+	// Escape single quotes by doubling them (for PostgreSQL string literals)
+	escaped = strings.ReplaceAll(escaped, `'`, `''`)
+	return escaped
 }
