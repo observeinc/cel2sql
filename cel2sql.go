@@ -203,19 +203,19 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 func (con *converter) visitCallConditional(expr *exprpb.Expr) error {
 	c := expr.GetCallExpr()
 	args := c.GetArgs()
-	con.str.WriteString("IF(")
+	con.str.WriteString("CASE WHEN ")
 	if err := con.visit(args[0]); err != nil {
 		return err
 	}
-	con.str.WriteString(", ")
+	con.str.WriteString(" THEN ")
 	if err := con.visit(args[1]); err != nil {
 		return err
 	}
-	con.str.WriteString(", ")
+	con.str.WriteString(" ELSE ")
 	if err := con.visit(args[2]); err != nil {
-		return nil
+		return err
 	}
-	con.str.WriteString(")")
+	con.str.WriteString(" END")
 	return nil
 }
 
@@ -335,11 +335,11 @@ func (con *converter) callEndsWith(target *exprpb.Expr, args []*exprpb.Expr) err
 func (con *converter) callCasting(function string, _ *exprpb.Expr, args []*exprpb.Expr) error {
 	arg := args[0]
 	if function == overloads.TypeConvertInt && isTimestampType(con.getType(arg)) {
-		con.str.WriteString("UNIX_SECONDS(")
+		con.str.WriteString("EXTRACT(EPOCH FROM ")
 		if err := con.visit(arg); err != nil {
 			return err
 		}
-		con.str.WriteString(")")
+		con.str.WriteString(")::bigint")
 		return nil
 	}
 	con.str.WriteString("CAST(")
@@ -349,17 +349,17 @@ func (con *converter) callCasting(function string, _ *exprpb.Expr, args []*exprp
 	con.str.WriteString(" AS ")
 	switch function {
 	case overloads.TypeConvertBool:
-		con.str.WriteString("BOOL")
+		con.str.WriteString("BOOLEAN")
 	case overloads.TypeConvertBytes:
-		con.str.WriteString("BYTES")
+		con.str.WriteString("BYTEA")
 	case overloads.TypeConvertDouble:
-		con.str.WriteString("FLOAT64")
+		con.str.WriteString("DOUBLE PRECISION")
 	case overloads.TypeConvertInt:
-		con.str.WriteString("INT64")
+		con.str.WriteString("BIGINT")
 	case overloads.TypeConvertString:
-		con.str.WriteString("STRING")
+		con.str.WriteString("TEXT")
 	case overloads.TypeConvertUint:
-		con.str.WriteString("INT64")
+		con.str.WriteString("BIGINT")
 	}
 	con.str.WriteString(")")
 	return nil
@@ -1320,18 +1320,12 @@ func (con *converter) visitStructMsg(expr *exprpb.Expr) error {
 func (con *converter) visitStructMap(expr *exprpb.Expr) error {
 	m := expr.GetStructExpr()
 	entries := m.GetEntries()
-	con.str.WriteString("STRUCT(")
+	con.str.WriteString("ROW(")
 	for i, entry := range entries {
 		v := entry.GetValue()
 		if err := con.visit(v); err != nil {
 			return err
 		}
-		con.str.WriteString(" AS ")
-		fieldName, err := extractFieldName(entry.GetMapKey())
-		if err != nil {
-			return err
-		}
-		con.str.WriteString(fieldName)
 		if i < len(entries)-1 {
 			con.str.WriteString(", ")
 		}

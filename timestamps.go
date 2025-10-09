@@ -151,13 +151,13 @@ func (con *converter) callExtractFromTimestamp(function string, target *exprpb.E
 	case overloads.TimeGetSeconds:
 		con.str.WriteString("SECOND")
 	case overloads.TimeGetMilliseconds:
-		con.str.WriteString("MILLISECOND")
+		con.str.WriteString("MILLISECONDS")
 	case overloads.TimeGetDayOfYear:
-		con.str.WriteString("DAYOFYEAR")
+		con.str.WriteString("DOY")
 	case overloads.TimeGetDayOfMonth:
 		con.str.WriteString("DAY")
 	case overloads.TimeGetDayOfWeek:
-		con.str.WriteString("DAYOFWEEK")
+		con.str.WriteString("DOW")
 	}
 	con.str.WriteString(" FROM ")
 	if err := con.visit(target); err != nil {
@@ -189,17 +189,16 @@ func (con *converter) callTimestampFromString(_ *exprpb.Expr, args []*exprpb.Exp
 		return nil
 	} else if len(args) == 2 {
 		// Handle timestamp(datetime, timezone) format
-		con.str.WriteString("TIMESTAMP(")
+		// In PostgreSQL, use: datetime AT TIME ZONE timezone
 		err := con.visit(args[0])
 		if err != nil {
 			return err
 		}
-		con.str.WriteString(", ")
+		con.str.WriteString(" AT TIME ZONE ")
 		err = con.visit(args[1])
 		if err != nil {
 			return err
 		}
-		con.str.WriteString(")")
 		return nil
 	}
 

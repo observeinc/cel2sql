@@ -159,7 +159,7 @@ func TestConvert(t *testing.T) {
 		{
 			name:    "IF",
 			args:    args{source: `name == "a" ? "a" : "b"`},
-			want:    "IF(name = 'a', 'a', 'b')",
+			want:    "CASE WHEN name = 'a' THEN 'a' ELSE 'b' END",
 			wantErr: false,
 		},
 		{
@@ -225,7 +225,7 @@ func TestConvert(t *testing.T) {
 		{
 			name:    "map",
 			args:    args{source: `{"one": 1, "two": 2, "three": 3}["one"] == 1`},
-			want:    "STRUCT(1 AS one, 2 AS two, 3 AS three).one = 1",
+			want:    "ROW(1, 2, 3).one = 1",
 			wantErr: false,
 		},
 		{
@@ -291,7 +291,7 @@ func TestConvert(t *testing.T) {
 		{
 			name:    "timestamp",
 			args:    args{source: `created_at - duration("60m") <= timestamp(datetime("2021-09-01 18:00:00"), "Asia/Tokyo")`},
-			want:    "created_at - INTERVAL 1 HOUR <= TIMESTAMP(DATETIME('2021-09-01 18:00:00'), 'Asia/Tokyo')",
+			want:    "created_at - INTERVAL 1 HOUR <= DATETIME('2021-09-01 18:00:00') AT TIME ZONE 'Asia/Tokyo'",
 			wantErr: false,
 		},
 		{
@@ -435,37 +435,37 @@ func TestConvert(t *testing.T) {
 		{
 			name:    "cast_bool",
 			args:    args{source: `bool(0) == false`},
-			want:    "CAST(0 AS BOOL) IS FALSE",
+			want:    "CAST(0 AS BOOLEAN) IS FALSE",
 			wantErr: false,
 		},
 		{
 			name:    "cast_bytes",
 			args:    args{source: `bytes("test")`},
-			want:    "CAST('test' AS BYTES)",
+			want:    "CAST('test' AS BYTEA)",
 			wantErr: false,
 		},
 		{
 			name:    "cast_int",
 			args:    args{source: `int(true) == 1`},
-			want:    "CAST(TRUE AS INT64) = 1",
+			want:    "CAST(TRUE AS BIGINT) = 1",
 			wantErr: false,
 		},
 		{
 			name:    "cast_string",
 			args:    args{source: `string(true) == "true"`},
-			want:    "CAST(TRUE AS STRING) = 'true'",
+			want:    "CAST(TRUE AS TEXT) = 'true'",
 			wantErr: false,
 		},
 		{
 			name:    "cast_string_from_timestamp",
 			args:    args{source: `string(created_at)`},
-			want:    "CAST(created_at AS STRING)",
+			want:    "CAST(created_at AS TEXT)",
 			wantErr: false,
 		},
 		{
 			name:    "cast_int_epoch",
 			args:    args{source: `int(created_at)`},
-			want:    "UNIX_SECONDS(created_at)",
+			want:    "EXTRACT(EPOCH FROM created_at)::bigint",
 			wantErr: false,
 		},
 		{
@@ -477,7 +477,7 @@ func TestConvert(t *testing.T) {
 		{
 			name:    "size_bytes",
 			args:    args{source: `size(bytes("test"))`},
-			want:    "LENGTH(CAST('test' AS BYTES))",
+			want:    "LENGTH(CAST('test' AS BYTEA))",
 			wantErr: false,
 		},
 		{
