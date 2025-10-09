@@ -1,5 +1,56 @@
 # Changelog
 
+## [2.9.0] - 2025-10-09
+
+### Fixed
+- **PostgreSQL 17 Compatibility**: Comprehensive fix for all PostgreSQL 17 incompatible functions
+  - Fixed ternary operator (`? :`) to generate `CASE WHEN ... THEN ... ELSE ... END` instead of `IF()`
+  - Fixed Unix timestamp conversion to use `EXTRACT(EPOCH FROM ...)::bigint` instead of `UNIX_SECONDS()`
+  - Fixed type casting to use correct PostgreSQL type names:
+    - `BOOL` → `BOOLEAN`
+    - `BYTES` → `BYTEA`
+    - `INT64` → `BIGINT`
+    - `FLOAT64` → `DOUBLE PRECISION`
+    - `STRING` → `TEXT`
+  - Fixed date part extraction to use correct PostgreSQL field names:
+    - `DAYOFYEAR` → `DOY`
+    - `DAYOFWEEK` → `DOW`
+    - `MILLISECOND` → `MILLISECONDS`
+  - Fixed struct construction to use `ROW()` instead of `STRUCT()`
+  - Fixed timezone conversion to use `AT TIME ZONE` operator for 2-argument `timestamp()` calls
+
+### Added
+- **PostgreSQL 17 Integration Tests**: Comprehensive test suite validating all fixes against real PostgreSQL 17 database
+  - 12 integration tests covering CASE WHEN, type casting, EXTRACT operations, and complex combinations
+  - All tests validate both SQL generation correctness and actual query execution results
+  - Updated all test containers from PostgreSQL 15 to PostgreSQL 17
+
+### Technical Details
+- All generated SQL now validated against PostgreSQL 17 for correctness
+- Maintains backward compatibility with existing CEL expressions
+- All 100+ unit tests and integration tests pass with PostgreSQL 17
+
+### Examples
+```cel
+// Ternary operator (conditional)
+age > 30 ? "senior" : "junior"                     // → CASE WHEN age > 30 THEN 'senior' ELSE 'junior' END
+
+// Unix timestamp conversion
+int(created_at)                                    // → EXTRACT(EPOCH FROM created_at)::bigint
+
+// Type casting
+bool(age > 30)                                     // → CAST(age > 30 AS BOOLEAN)
+int(score)                                         // → CAST(score AS BIGINT)
+string(age)                                        // → CAST(age AS TEXT)
+
+// Date part extraction
+created_at.getDayOfYear()                          // → EXTRACT(DOY FROM created_at) - 1
+created_at.getDayOfWeek()                          // → EXTRACT(DOW FROM created_at) - 1
+
+// Timezone conversion (2-arg timestamp)
+timestamp(created_at, "America/New_York")          // → created_at AT TIME ZONE 'America/New_York'
+```
+
 ## [2.8.1] - 2025-10-09
 
 ### Fixed
