@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.10.0] - 2025-10-10
+
+### Added
+- **Comprehensive Fuzzing Infrastructure**: Go native fuzzing for security and reliability testing
+  - Three specialized fuzz tests: `FuzzConvert`, `FuzzEscapeLikePattern`, `FuzzConvertRE2ToPOSIX`
+  - Fuzzing dictionary with 100+ tokens (CEL operators, SQL injection vectors, regex patterns, Unicode)
+  - CI/CD integration: 60s on PRs, 10-minute weekly runs, manual trigger support
+  - Automatic crash artifact preservation and regression testing
+  - Successfully discovered 3 security vulnerabilities within minutes of initial runs
+
+### Fixed
+- **Critical Security Fixes**: Null byte handling vulnerabilities discovered by fuzzing
+  - Fixed null bytes in string literals causing SQL corruption (#14)
+  - Fixed null bytes in LIKE patterns for `startsWith()` and `endsWith()` functions (#16)
+  - Fixed null bytes in regex patterns for `matches()` function (#18)
+  - All three fixes prevent null bytes (`\x00`) from reaching PostgreSQL queries
+- **Panic to Error**: Replaced panic with proper error handling in timestamp operation validation
+
+### Documentation
+- Completely rewrote README.md for better first-time user experience
+- Added beginner-friendly examples and clear getting started guide
+- Improved API documentation with real-world use cases
+
+### Security
+This release includes critical security fixes that prevent SQL corruption from null byte injection. All users are strongly encouraged to upgrade.
+
 ## [2.9.0] - 2025-10-09
 
 ### Fixed
