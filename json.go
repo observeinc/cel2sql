@@ -1,7 +1,9 @@
 package cel2sql
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 )
@@ -22,11 +24,19 @@ func (con *converter) shouldUseJSONPath(operand *exprpb.Expr, _ string) bool {
 		// For obj.metadata, check if metadata is a JSON column in obj table
 		if tableName, fieldName, ok := con.getTableAndFieldFromSelectChain(operand); ok {
 			// Use schema information to determine if this field is JSON
-			return con.isFieldJSON(tableName, fieldName)
+			isJSON := con.isFieldJSON(tableName, fieldName)
+			con.logger.LogAttrs(context.Background(), slog.LevelDebug,
+				"JSON path detection",
+				slog.String("table", tableName),
+				slog.String("field", fieldName),
+				slog.Bool("is_json", isJSON),
+			)
+			return isJSON
 		}
 
 		// Check if there's a JSON field somewhere in the operand chain
 		if con.hasJSONFieldInChain(operand) {
+			con.logger.Debug("JSON field detected in select chain")
 			return true
 		}
 	}
@@ -294,6 +304,7 @@ func (con *converter) getJSONArrayFunction(expr *exprpb.Expr) string {
 
 // buildJSONPath constructs the full JSON path for nested field access
 func (con *converter) buildJSONPath(expr *exprpb.Expr) error {
+	con.logger.Debug("building JSON path for nested access")
 	return con.buildJSONPathInternal(expr, true)
 }
 
@@ -353,11 +364,20 @@ func (con *converter) buildJSONPathInternal(expr *exprpb.Expr, isFinalField bool
 	}
 
 	// Add the appropriate JSON path operator based on whether this is the final field
-	if isFinalField {
-		con.str.WriteString("->>'") // Final field: extract as text
-	} else {
-		con.str.WriteString("->'") // Intermediate field: keep as JSON
+	operator := "->>"
+	if !isFinalField {
+		operator = "->"
 	}
+
+	con.logger.LogAttrs(context.Background(), slog.LevelDebug,
+		"JSON path operator selection",
+		slog.String("field", field),
+		slog.String("operator", operator),
+		slog.Bool("is_final", isFinalField),
+	)
+
+	con.str.WriteString(operator)
+	con.str.WriteString("'")
 	con.str.WriteString(escapeJSONFieldName(field))
 	con.str.WriteString("'")
 	return nil

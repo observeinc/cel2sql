@@ -175,6 +175,64 @@ sqlCondition, err := cel2sql.Convert(ast)
 // Returns: table.field = 'value' AND table.age > 30
 ```
 
+### Logging and Observability
+
+cel2sql supports structured logging using Go's standard `log/slog` package (Go 1.21+).
+
+Logging is optional and has **zero overhead** when not enabled (uses `slog.DiscardHandler` by default).
+
+#### Enable Logging
+
+```go
+import "log/slog"
+
+// JSON handler for production/machine parsing
+logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+    Level: slog.LevelDebug,
+}))
+
+// Text handler for development/debugging
+logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+sql, err := cel2sql.Convert(ast,
+    cel2sql.WithSchemas(schemas),
+    cel2sql.WithLogger(logger))
+```
+
+#### What Gets Logged
+
+- **JSON path detection decisions** - Table, field, operator selection (->>, ?)
+- **Comprehension type identification** - all, exists, exists_one, filter, map
+- **Schema lookups** - Hits/misses, field type detection
+- **Performance metrics** - Conversion duration
+- **Regex pattern transformations** - RE2 to POSIX conversion
+- **Operator mapping decisions** - CEL to SQL operator conversion
+- **Error contexts** - Full details when conversions fail
+
+#### Log Levels
+
+- **Debug**: Detailed conversion steps, operator mappings, schema lookups
+- **Error**: Conversion failures with full context
+
+#### Example Usage
+
+```go
+// Without logger - zero overhead (default)
+sql, err := cel2sql.Convert(ast)
+
+// With logging - detailed observability
+logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+    Level: slog.LevelDebug,
+}))
+
+sql, err := cel2sql.Convert(ast,
+    cel2sql.WithSchemas(schemas),
+    cel2sql.WithContext(ctx),
+    cel2sql.WithLogger(logger))
+```
+
+See `examples/logging/` for a complete working example with both JSON and text handlers.
+
 ## Important Notes
 
 ### Migration Context

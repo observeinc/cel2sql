@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/operators"
@@ -42,6 +44,7 @@ type ConvertOption func(*convertOptions)
 type convertOptions struct {
 	schemas map[string]pg.Schema
 	ctx     context.Context
+	logger  *slog.Logger
 }
 
 // WithSchemas provides schema information for proper JSON/JSONB field handling.
@@ -78,6 +81,33 @@ func WithContext(ctx context.Context) ConvertOption {
 	}
 }
 
+// WithLogger provides a logger for observability and debugging.
+// If not provided, logging is disabled with zero overhead using slog.DiscardHandler.
+//
+// The logger enables visibility into:
+//   - JSON path detection decisions (table, field, operator selection)
+//   - Comprehension type identification (all, exists, filter, map)
+//   - Schema lookups (hits/misses, field types)
+//   - Performance metrics (conversion duration)
+//   - Regex pattern transformations (RE2 to POSIX)
+//   - Operator mapping decisions
+//   - Error contexts with full details
+//
+// Example with JSON output:
+//
+//	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+//	sql, err := cel2sql.Convert(ast, cel2sql.WithLogger(logger))
+//
+// Example with text output:
+//
+//	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+//	sql, err := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas), cel2sql.WithLogger(logger))
+func WithLogger(logger *slog.Logger) ConvertOption {
+	return func(o *convertOptions) {
+		o.logger = logger
+	}
+}
+
 // Convert converts a CEL AST to a PostgreSQL SQL WHERE clause condition.
 // Options can be provided to configure the conversion behavior.
 //
@@ -89,24 +119,45 @@ func WithContext(ctx context.Context) ConvertOption {
 //
 //	sql, err := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
 func Convert(ast *cel.Ast, opts ...ConvertOption) (string, error) {
-	options := &convertOptions{}
+	start := time.Now()
+
+	options := &convertOptions{
+		logger: slog.New(slog.DiscardHandler), // Default: no-op logger with zero overhead
+	}
 	for _, opt := range opts {
 		opt(options)
 	}
 
+	options.logger.Debug("starting CEL to SQL conversion")
+
 	checkedExpr, err := cel.AstToCheckedExpr(ast)
 	if err != nil {
+		options.logger.Error("AST to CheckedExpr conversion failed", slog.Any("error", err))
 		return "", err
 	}
+
 	un := &converter{
 		typeMap: checkedExpr.TypeMap,
 		schemas: options.schemas,
 		ctx:     options.ctx,
+		logger:  options.logger,
 	}
+
 	if err := un.visit(checkedExpr.Expr); err != nil {
+		options.logger.Error("conversion failed", slog.Any("error", err))
 		return "", err
 	}
-	return un.str.String(), nil
+
+	result := un.str.String()
+	duration := time.Since(start)
+
+	options.logger.LogAttrs(context.Background(), slog.LevelDebug,
+		"conversion completed",
+		slog.String("sql", result),
+		slog.Duration("duration", duration),
+	)
+
+	return result, nil
 }
 
 type converter struct {
@@ -114,6 +165,7 @@ type converter struct {
 	typeMap map[int64]*exprpb.Type
 	schemas map[string]pg.Schema
 	ctx     context.Context
+	logger  *slog.Logger
 }
 
 // checkContext checks if the context has been cancelled or expired.
@@ -158,20 +210,31 @@ func (con *converter) visit(expr *exprpb.Expr) error {
 // isFieldJSON checks if a field in a table is a JSON/JSONB type using schema information
 func (con *converter) isFieldJSON(tableName, fieldName string) bool {
 	if con.schemas == nil {
+		con.logger.Debug("no schemas provided for JSON detection")
 		return false
 	}
 
 	schema, ok := con.schemas[tableName]
 	if !ok {
+		con.logger.Debug("schema not found for table", slog.String("table", tableName))
 		return false
 	}
 
 	for _, field := range schema {
 		if field.Name == fieldName {
+			con.logger.LogAttrs(context.Background(), slog.LevelDebug,
+				"field type lookup",
+				slog.String("table", tableName),
+				slog.String("field", fieldName),
+				slog.Bool("is_json", field.IsJSON),
+			)
 			return field.IsJSON
 		}
 	}
 
+	con.logger.Debug("field not found in schema",
+		slog.String("table", tableName),
+		slog.String("field", fieldName))
 	return false
 }
 
@@ -359,6 +422,13 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 	} else {
 		return fmt.Errorf("cannot unmangle operator: %s", fun)
 	}
+
+	con.logger.LogAttrs(context.Background(), slog.LevelDebug,
+		"binary operator conversion",
+		slog.String("cel_op", fun),
+		slog.String("sql_op", operator),
+	)
+
 	con.str.WriteString(" ")
 	con.str.WriteString(operator)
 	con.str.WriteString(" ")
@@ -622,6 +692,16 @@ func (con *converter) callMatches(target *exprpb.Expr, args []*exprpb.Expr) erro
 		if err != nil {
 			return fmt.Errorf("invalid regex pattern: %w", err)
 		}
+
+		// Determine case sensitivity
+		caseInsensitive := strings.HasPrefix(re2Pattern, "(?i)")
+
+		con.logger.LogAttrs(context.Background(), slog.LevelDebug,
+			"regex pattern conversion",
+			slog.String("original_pattern", re2Pattern),
+			slog.String("converted_pattern", posixPattern),
+			slog.Bool("case_insensitive", caseInsensitive),
+		)
 
 		// Write the converted pattern as a string literal
 		escaped := strings.ReplaceAll(posixPattern, "'", "''")

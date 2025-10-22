@@ -1,8 +1,10 @@
 package cel2sql
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/cel-go/common/operators"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
@@ -95,6 +97,12 @@ func (con *converter) analyzeComprehensionPattern(comp *exprpb.Expr_Comprehensio
 		if con.isLogicalAndStep(comp.GetLoopStep(), comp.GetAccuVar()) {
 			info.Type = ComprehensionAll
 			info.Predicate = con.extractPredicateFromAndStep(comp.GetLoopStep(), comp.GetAccuVar())
+			con.logger.LogAttrs(context.Background(), slog.LevelDebug,
+				"comprehension identified",
+				slog.String("type", info.Type.String()),
+				slog.String("iter_var", info.IterVar),
+				slog.String("accu_var", info.AccuVar),
+			)
 			return info, nil
 		}
 	}
@@ -104,6 +112,12 @@ func (con *converter) analyzeComprehensionPattern(comp *exprpb.Expr_Comprehensio
 		if con.isLogicalOrStep(comp.GetLoopStep(), comp.GetAccuVar()) {
 			info.Type = ComprehensionExists
 			info.Predicate = con.extractPredicateFromOrStep(comp.GetLoopStep(), comp.GetAccuVar())
+			con.logger.LogAttrs(context.Background(), slog.LevelDebug,
+				"comprehension identified",
+				slog.String("type", info.Type.String()),
+				slog.String("iter_var", info.IterVar),
+				slog.String("accu_var", info.AccuVar),
+			)
 			return info, nil
 		}
 	}
@@ -113,6 +127,12 @@ func (con *converter) analyzeComprehensionPattern(comp *exprpb.Expr_Comprehensio
 		if con.isConditionalCountStep(comp.GetLoopStep(), comp.GetAccuVar()) && con.isEqualsOneResult(comp.GetResult(), comp.GetAccuVar()) {
 			info.Type = ComprehensionExistsOne
 			info.Predicate = con.extractPredicateFromConditionalStep(comp.GetLoopStep())
+			con.logger.LogAttrs(context.Background(), slog.LevelDebug,
+				"comprehension identified",
+				slog.String("type", info.Type.String()),
+				slog.String("iter_var", info.IterVar),
+				slog.String("accu_var", info.AccuVar),
+			)
 			return info, nil
 		}
 	}
@@ -122,6 +142,12 @@ func (con *converter) analyzeComprehensionPattern(comp *exprpb.Expr_Comprehensio
 		if con.isListAppendStep(comp.GetLoopStep(), comp.GetAccuVar()) {
 			info.Type = ComprehensionMap
 			info.Transform = con.extractTransformFromAppendStep(comp.GetLoopStep(), comp.GetAccuVar())
+			con.logger.LogAttrs(context.Background(), slog.LevelDebug,
+				"comprehension identified",
+				slog.String("type", info.Type.String()),
+				slog.String("iter_var", info.IterVar),
+				slog.Bool("has_filter", false),
+			)
 			return info, nil
 		}
 		// Map with filter: step = conditional(filter, accu + [transform], accu)
@@ -131,6 +157,12 @@ func (con *converter) analyzeComprehensionPattern(comp *exprpb.Expr_Comprehensio
 			filter, transform := con.extractFilterAndTransformFromConditionalStep(comp.GetLoopStep(), comp.GetAccuVar())
 			info.Filter = filter
 			info.Transform = transform
+			con.logger.LogAttrs(context.Background(), slog.LevelDebug,
+				"comprehension identified",
+				slog.String("type", info.Type.String()),
+				slog.String("iter_var", info.IterVar),
+				slog.Bool("has_filter", true),
+			)
 			return info, nil
 		}
 	}
@@ -140,6 +172,11 @@ func (con *converter) analyzeComprehensionPattern(comp *exprpb.Expr_Comprehensio
 		if con.isConditionalFilterStep(comp.GetLoopStep(), comp.GetAccuVar(), comp.GetIterVar()) {
 			info.Type = ComprehensionFilter
 			info.Predicate = con.extractPredicateFromConditionalStep(comp.GetLoopStep())
+			con.logger.LogAttrs(context.Background(), slog.LevelDebug,
+				"comprehension identified",
+				slog.String("type", info.Type.String()),
+				slog.String("iter_var", info.IterVar),
+			)
 			return info, nil
 		}
 	}
