@@ -71,7 +71,7 @@ func TestGeneratedSQLAgainstPostgreSQL(t *testing.T) {
 	// Set up CEL environment
 	testSchema := pg.Schema{
 		{Name: "id", Type: "integer"},
-		{Name: "metadata", Type: "jsonb", IsJSON: true},
+		{Name: "metadata", Type: "jsonb", IsJSON: true, IsJSONB: true},
 	}
 
 	provider := pg.NewTypeProvider(map[string]pg.Schema{
@@ -116,7 +116,7 @@ func TestGeneratedSQLAgainstPostgreSQL(t *testing.T) {
 			schemas := map[string]pg.Schema{
 				"obj": testSchema,
 			}
-			sqlCondition, err := cel2sql.ConvertWithSchemas(ast, schemas)
+			sqlCondition, err := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
 			require.NoError(t, err)
 
 			t.Logf("CEL Expression: %s", tt.celExpr)

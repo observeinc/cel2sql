@@ -15,7 +15,7 @@ func TestJSONFieldNameEscaping_SingleQuote(t *testing.T) {
 	// Create a schema with a JSON field that might have field names with single quotes
 	testSchema := pg.Schema{
 		{Name: "id", Type: "integer"},
-		{Name: "metadata", Type: "jsonb", IsJSON: true},
+		{Name: "metadata", Type: "jsonb", IsJSON: true, IsJSONB: true},
 	}
 
 	provider := pg.NewTypeProvider(map[string]pg.Schema{
@@ -58,7 +58,7 @@ func TestJSONFieldNameEscaping_SingleQuote(t *testing.T) {
 			schemas := map[string]pg.Schema{
 				"obj": testSchema,
 			}
-			sqlCondition, err := cel2sql.ConvertWithSchemas(ast, schemas)
+			sqlCondition, err := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
 			require.NoError(t, err, "Should convert CEL to SQL: %s", tt.description)
 			require.Equal(t, tt.expectedSQL, sqlCondition, "SQL should match expected output")
 		})
@@ -77,7 +77,7 @@ func TestJSONFieldNameEscaping_Documentation(t *testing.T) {
 func TestJSONFieldNameEscaping_HasFunction(t *testing.T) {
 	testSchema := pg.Schema{
 		{Name: "id", Type: "integer"},
-		{Name: "settings", Type: "jsonb", IsJSON: true},
+		{Name: "settings", Type: "jsonb", IsJSON: true, IsJSONB: true},
 	}
 
 	provider := pg.NewTypeProvider(map[string]pg.Schema{
@@ -112,7 +112,7 @@ func TestJSONFieldNameEscaping_HasFunction(t *testing.T) {
 			schemas := map[string]pg.Schema{
 				"obj": testSchema,
 			}
-			sqlCondition, err := cel2sql.ConvertWithSchemas(ast, schemas)
+			sqlCondition, err := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
 			require.NoError(t, err, "Should convert CEL to SQL: %s", tt.description)
 			require.NotEmpty(t, sqlCondition, "Should generate SQL")
 			t.Logf("Generated SQL: %s", sqlCondition)

@@ -18,21 +18,50 @@ import (
 // Implementations based on `google/cel-go`'s unparser
 // https://github.com/google/cel-go/blob/master/parser/unparser.go
 
-// Convert converts a CEL AST to a PostgreSQL SQL WHERE clause condition.
-func Convert(ast *cel.Ast) (string, error) {
-	return ConvertWithSchemas(ast, nil)
+// ConvertOption is a functional option for configuring the Convert function.
+type ConvertOption func(*convertOptions)
+
+// convertOptions holds configuration options for the Convert function.
+type convertOptions struct {
+	schemas map[string]pg.Schema
 }
 
-// ConvertWithSchemas converts a CEL AST to a PostgreSQL SQL WHERE clause condition,
-// using schema information to properly handle JSON/JSONB fields.
-func ConvertWithSchemas(ast *cel.Ast, schemas map[string]pg.Schema) (string, error) {
+// WithSchemas provides schema information for proper JSON/JSONB field handling.
+// This option is required for correct SQL generation when using JSON/JSONB fields.
+//
+// Example:
+//
+//	schemas := provider.GetSchemas()
+//	sql, err := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
+func WithSchemas(schemas map[string]pg.Schema) ConvertOption {
+	return func(o *convertOptions) {
+		o.schemas = schemas
+	}
+}
+
+// Convert converts a CEL AST to a PostgreSQL SQL WHERE clause condition.
+// Options can be provided to configure the conversion behavior.
+//
+// Example without options:
+//
+//	sql, err := cel2sql.Convert(ast)
+//
+// Example with schema information for JSON/JSONB support:
+//
+//	sql, err := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
+func Convert(ast *cel.Ast, opts ...ConvertOption) (string, error) {
+	options := &convertOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	checkedExpr, err := cel.AstToCheckedExpr(ast)
 	if err != nil {
 		return "", err
 	}
 	un := &converter{
 		typeMap: checkedExpr.TypeMap,
-		schemas: schemas,
+		schemas: options.schemas,
 	}
 	if err := un.visit(checkedExpr.Expr); err != nil {
 		return "", err
@@ -105,6 +134,66 @@ func (con *converter) getTableAndFieldFromSelectChain(expr *exprpb.Expr) (string
 	}
 
 	return "", "", false
+}
+
+// isFieldJSONB checks if a field in a table is specifically JSONB (vs JSON) using schema information
+func (con *converter) isFieldJSONB(tableName, fieldName string) bool {
+	if con.schemas == nil {
+		return false
+	}
+
+	schema, ok := con.schemas[tableName]
+	if !ok {
+		return false
+	}
+
+	for _, field := range schema {
+		if field.Name == fieldName {
+			return field.IsJSONB
+		}
+	}
+
+	return false
+}
+
+// isFieldArray checks if a field in a table is an array using schema information
+func (con *converter) isFieldArray(tableName, fieldName string) bool {
+	if con.schemas == nil {
+		return false
+	}
+
+	schema, ok := con.schemas[tableName]
+	if !ok {
+		return false
+	}
+
+	for _, field := range schema {
+		if field.Name == fieldName {
+			return field.Repeated
+		}
+	}
+
+	return false
+}
+
+// getFieldElementType returns the element type of an array field using schema information
+func (con *converter) getFieldElementType(tableName, fieldName string) string {
+	if con.schemas == nil {
+		return ""
+	}
+
+	schema, ok := con.schemas[tableName]
+	if !ok {
+		return ""
+	}
+
+	for _, field := range schema {
+		if field.Name == fieldName && field.Repeated {
+			return field.ElementType
+		}
+	}
+
+	return ""
 }
 
 func (con *converter) visitCall(expr *exprpb.Expr) error {
