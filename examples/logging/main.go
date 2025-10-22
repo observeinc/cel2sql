@@ -1,3 +1,5 @@
+// Package main demonstrates cel2sql structured logging with log/slog.
+// Shows both JSON and text handlers with debug-level logging enabled.
 package main
 
 import (
