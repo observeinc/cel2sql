@@ -2,6 +2,7 @@
 package cel2sql
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -24,6 +25,7 @@ type ConvertOption func(*convertOptions)
 // convertOptions holds configuration options for the Convert function.
 type convertOptions struct {
 	schemas map[string]pg.Schema
+	ctx     context.Context
 }
 
 // WithSchemas provides schema information for proper JSON/JSONB field handling.
@@ -36,6 +38,27 @@ type convertOptions struct {
 func WithSchemas(schemas map[string]pg.Schema) ConvertOption {
 	return func(o *convertOptions) {
 		o.schemas = schemas
+	}
+}
+
+// WithContext provides a context for cancellation and timeout support.
+// If not provided, operations will run without cancellation checks.
+// This allows long-running conversions to be cancelled and enables timeout protection.
+//
+// Example with timeout:
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+//	defer cancel()
+//	sql, err := cel2sql.Convert(ast, cel2sql.WithContext(ctx))
+//
+// Example with cancellation:
+//
+//	ctx, cancel := context.WithCancel(context.Background())
+//	defer cancel()
+//	sql, err := cel2sql.Convert(ast, cel2sql.WithContext(ctx), cel2sql.WithSchemas(schemas))
+func WithContext(ctx context.Context) ConvertOption {
+	return func(o *convertOptions) {
+		o.ctx = ctx
 	}
 }
 
@@ -62,6 +85,7 @@ func Convert(ast *cel.Ast, opts ...ConvertOption) (string, error) {
 	un := &converter{
 		typeMap: checkedExpr.TypeMap,
 		schemas: options.schemas,
+		ctx:     options.ctx,
 	}
 	if err := un.visit(checkedExpr.Expr); err != nil {
 		return "", err
@@ -73,9 +97,28 @@ type converter struct {
 	str     strings.Builder
 	typeMap map[int64]*exprpb.Type
 	schemas map[string]pg.Schema
+	ctx     context.Context
+}
+
+// checkContext checks if the context has been cancelled or expired.
+// Returns nil if no context was provided or if the context is still active.
+// Returns an error if the context has been cancelled or its deadline has exceeded.
+func (con *converter) checkContext() error {
+	if con.ctx == nil {
+		return nil
+	}
+	if err := con.ctx.Err(); err != nil {
+		return fmt.Errorf("conversion cancelled: %w", err)
+	}
+	return nil
 }
 
 func (con *converter) visit(expr *exprpb.Expr) error {
+	// Check for context cancellation at the main recursion entry point
+	if err := con.checkContext(); err != nil {
+		return err
+	}
+
 	switch expr.ExprKind.(type) {
 	case *exprpb.Expr_CallExpr:
 		return con.visitCall(expr)
@@ -197,6 +240,11 @@ func (con *converter) getFieldElementType(tableName, fieldName string) string {
 }
 
 func (con *converter) visitCall(expr *exprpb.Expr) error {
+	// Check for context cancellation before processing function calls
+	if err := con.checkContext(); err != nil {
+		return err
+	}
+
 	c := expr.GetCallExpr()
 	fun := c.GetFunction()
 	switch fun {
@@ -746,6 +794,11 @@ func (con *converter) visitCallUnary(expr *exprpb.Expr) error {
 }
 
 func (con *converter) visitComprehension(expr *exprpb.Expr) error {
+	// Check for context cancellation before processing comprehensions (potentially expensive)
+	if err := con.checkContext(); err != nil {
+		return err
+	}
+
 	info, err := con.identifyComprehension(expr)
 	if err != nil {
 		return fmt.Errorf("failed to identify comprehension: %w", err)
