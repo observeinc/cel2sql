@@ -8,7 +8,7 @@ cel2sql converts CEL (Common Expression Language) expressions to PostgreSQL SQL 
 
 **Module**: `github.com/spandigital/cel2sql/v2`
 **Go Version**: 1.24+
-**Current Version**: v2.8.0
+**Current Version**: v2.10.0
 
 ## Common Development Commands
 
@@ -232,6 +232,184 @@ sql, err := cel2sql.Convert(ast,
 ```
 
 See `examples/logging/` for a complete working example with both JSON and text handlers.
+
+### Context Support (v2.10.0)
+
+cel2sql supports context propagation for cancellation, timeouts, and observability integration.
+
+Context support is **optional** and uses the functional options pattern.
+
+#### Enable Context
+
+```go
+import "context"
+
+// With timeout
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+sql, err := cel2sql.Convert(ast,
+    cel2sql.WithContext(ctx),
+    cel2sql.WithSchemas(schemas))
+
+// With cancellation
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+
+sql, err := cel2sql.Convert(ast,
+    cel2sql.WithContext(ctx))
+```
+
+#### When Context Is Checked
+
+Context cancellation is checked at key recursion points:
+- **visit()** - Main traversal entry point
+- **visitCall()** - Every function call
+- **visitComprehension()** - Before processing comprehensions
+- Individual comprehension handlers
+
+#### Error Handling
+
+If context is cancelled or times out during conversion:
+```go
+sql, err := cel2sql.Convert(ast, cel2sql.WithContext(ctx))
+if err != nil {
+    if errors.Is(err, context.Canceled) {
+        // Conversion was cancelled
+    } else if errors.Is(err, context.DeadlineExceeded) {
+        // Conversion timed out
+    }
+}
+```
+
+#### Benefits
+
+- **Cancellation**: Stop long-running conversions
+- **Timeouts**: Protect against complex expressions
+- **Observability**: Integrate with distributed tracing
+- **Resource Cleanup**: Automatic cleanup on cancellation
+
+#### Example Usage
+
+```go
+// Without context (default) - backward compatible
+sql, err := cel2sql.Convert(ast)
+
+// With context and other options
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+sql, err := cel2sql.Convert(ast,
+    cel2sql.WithContext(ctx),
+    cel2sql.WithSchemas(schemas),
+    cel2sql.WithLogger(logger))
+```
+
+See `examples/context/` for a complete working example with timeouts and cancellation.
+
+### Security Features (v2.10.0)
+
+cel2sql includes comprehensive security protections against common attack vectors.
+
+#### Field Name Validation
+
+All field names are validated to prevent SQL injection:
+
+**Validation Rules:**
+- Maximum length: 63 characters (PostgreSQL NAMEDATALEN-1)
+- Format: Must start with letter/underscore, contain only alphanumeric + underscore
+- Reserved keywords: 60+ SQL keywords are rejected
+- Empty strings: Not allowed
+
+**Protection Against:**
+```go
+// ❌ These will be rejected:
+field'; DROP TABLE users--
+SELECT * FROM sensitive
+user OR 1=1
+```
+
+**Validation happens at:**
+- `visitSelect()` - Field names in select expressions
+- `visitIdent()` - Identifier names to prevent reserved keywords
+
+#### JSON Field Escaping
+
+Single quotes in JSON field names are automatically escaped:
+
+**Automatic Escaping:**
+```go
+// CEL with quote in field name
+user.preferences.user'name == "test"
+
+// Generated SQL (quotes escaped)
+user.preferences->>'user''name' = 'test'
+```
+
+**Protection Against:**
+- SQL injection via malicious JSON field names
+- Field names like: `user' OR '1'='1`
+
+**Escaping applied in:**
+- `visitSelect()` - JSON path operators (->>)
+- `visitHasFunction()` - JSON existence operators (?)
+- `visitNestedJSONHas()` - jsonb_extract_path_text()
+- `buildJSONPath*()` - All JSON path construction
+
+#### ReDoS Protection
+
+Comprehensive validation prevents Regular Expression Denial of Service attacks:
+
+**Pattern Validation:**
+- **Length limit**: 500 characters maximum
+- **Nested quantifiers**: Detects patterns like `(a+)+`, `(a*)*`
+- **Capture group limit**: Maximum 20 groups
+- **Quantified alternation**: Blocks patterns like `(a|a)*b`
+- **Nesting depth limit**: Maximum 10 levels
+
+**Examples:**
+```go
+// ✅ Safe patterns (allowed)
+field.matches(r"[a-z]+@[a-z]+\.[a-z]+")
+field.matches(r"(?i)^user_\d+$")
+
+// ❌ Dangerous patterns (rejected)
+field.matches(r"(a+)+b")           // Nested quantifiers
+field.matches(r"(a|a)*b")          // Quantified alternation
+field.matches(r"(((((((((((a"))    // Excessive nesting
+```
+
+**Protection Against:**
+- Catastrophic backtracking (CWE-1333)
+- CPU exhaustion from complex patterns
+- Service disruption from malicious regex
+
+#### Context Timeouts
+
+Use context timeouts as defense-in-depth:
+
+```go
+// Protect against complex expressions
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+sql, err := cel2sql.Convert(ast,
+    cel2sql.WithContext(ctx),
+    cel2sql.WithSchemas(schemas))
+```
+
+#### Security Best Practices
+
+1. **Always validate user input** before passing to CEL
+2. **Use context timeouts** for user-provided expressions
+3. **Enable logging** to monitor conversion patterns
+4. **Keep schemas minimal** - only expose necessary fields
+5. **Use prepared statements** when executing generated SQL
+6. **Test edge cases** with your specific field names
+
+For detailed security information, see the security documentation.
 
 ## Important Notes
 

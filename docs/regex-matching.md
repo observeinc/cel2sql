@@ -315,6 +315,227 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX idx_field_trgm ON table USING GIN (field gin_trgm_ops);
 ```
 
+## ReDoS Protection
+
+cel2sql includes comprehensive protection against Regular Expression Denial of Service (ReDoS) attacks, also known as catastrophic backtracking (CWE-1333).
+
+### What is ReDoS?
+
+ReDoS attacks exploit poorly-constructed regex patterns that can cause exponential time complexity when matching certain inputs. A malicious pattern can consume 100% CPU and freeze your application.
+
+**Example of dangerous pattern:**
+```go
+// ❌ DANGEROUS: Nested quantifiers cause catastrophic backtracking
+field.matches(r"(a+)+b")
+// Input "aaaaaaaaaaaaaaaaaaaX" can take HOURS to process
+```
+
+### Automatic Validation
+
+All regex patterns are automatically validated before conversion. Dangerous patterns are rejected with descriptive error messages.
+
+### Pattern Limits
+
+#### 1. Length Limit (500 characters)
+
+```go
+// ✅ Allowed: Normal pattern
+email.matches(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+
+// ❌ Rejected: Pattern too long
+field.matches(r"very long pattern..." * 100)
+// Error: pattern exceeds 500 character limit
+```
+
+#### 2. Nested Quantifiers Detection
+
+Patterns with nested quantifiers are blocked:
+
+```go
+// ❌ Rejected: Nested + quantifiers
+field.matches(r"(a+)+")
+// Error: nested quantifiers detected at position X
+
+// ❌ Rejected: Nested * quantifiers
+field.matches(r"(a*)*")
+// Error: nested quantifiers detected
+
+// ❌ Rejected: Mixed nesting
+field.matches(r"(a+)*b")
+// Error: nested quantifiers detected
+
+// ✅ Allowed: Non-nested quantifiers
+field.matches(r"(abc)+")
+field.matches(r"a+b+c+")
+```
+
+#### 3. Capture Group Limit (20 groups)
+
+```go
+// ✅ Allowed: Reasonable number of groups
+field.matches(r"(a)(b)(c)(d)(e)")
+
+// ❌ Rejected: Too many capture groups
+field.matches(r"(a)(b)(c)...(z)(aa)(ab)")  // > 20 groups
+// Error: pattern exceeds 20 capture group limit
+```
+
+#### 4. Quantified Alternation Detection
+
+Patterns with quantified alternation are blocked:
+
+```go
+// ❌ Rejected: Quantified alternation
+field.matches(r"(a|a)+b")
+// Error: quantified alternation detected
+
+// ❌ Rejected: Subtle alternation issue
+field.matches(r"(x|xy)+y")
+// Error: quantified alternation detected
+
+// ✅ Allowed: Safe alternation
+field.matches(r"(cat|dog|bird)")
+field.matches(r"^(Mr|Ms|Dr)")
+```
+
+#### 5. Nesting Depth Limit (10 levels)
+
+```go
+// ✅ Allowed: Reasonable nesting
+field.matches(r"((abc))")
+
+// ❌ Rejected: Excessive nesting
+field.matches(r"((((((((((a))))))))))")  // 10+ levels
+// Error: pattern exceeds nesting depth limit of 10
+```
+
+### Safe Pattern Examples
+
+These patterns are safe and allowed:
+
+```go
+// ✅ Email validation
+email.matches(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+
+// ✅ Phone number
+phone.matches(r"^\d{3}-\d{3}-\d{4}$")
+
+// ✅ URL validation
+url.matches(r"^https?://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+
+// ✅ Username (3-20 chars)
+username.matches(r"^[a-zA-Z0-9_-]{3,20}$")
+
+// ✅ Case-insensitive search
+description.matches(r"(?i)urgent|priority|important")
+
+// ✅ Multiple alternations
+status.matches(r"^(active|inactive|pending|approved|rejected)$")
+```
+
+### Dangerous Pattern Examples
+
+These patterns are blocked for security:
+
+```go
+// ❌ Nested quantifiers
+field.matches(r"(a+)+b")
+field.matches(r"(a*)*b")
+field.matches(r"(a+)*b")
+field.matches(r"(a?)+b")
+
+// ❌ Quantified alternation
+field.matches(r"(a|a)+")
+field.matches(r"(x|xy)+y")
+field.matches(r"(ab|a)+c")
+
+// ❌ Excessive nesting
+field.matches(r"((((((((((a))))))))))")
+
+// ❌ Too many groups
+field.matches(r"(a)(b)(c)...(z)(aa)(ab)(ac)")  // > 20 groups
+
+// ❌ Pattern too long
+field.matches(r"..." * 600)  // > 500 chars
+```
+
+### Error Messages
+
+When a dangerous pattern is detected, you get a descriptive error:
+
+```go
+ast, _ := env.Compile(`field.matches(r"(a+)+")`)
+sql, err := cel2sql.Convert(ast)
+// err: "invalid regex pattern: nested quantifiers detected at position 4"
+
+ast, _ = env.Compile(`field.matches(r"(a|a)*b")`)
+sql, err = cel2sql.Convert(ast)
+// err: "invalid regex pattern: quantified alternation detected"
+```
+
+### Testing Your Patterns
+
+Before deploying regex patterns, test them:
+
+```go
+func TestRegexPattern(t *testing.T) {
+    // Test pattern compiles
+    ast, issues := env.Compile(`field.matches(r"^[a-z]+$")`)
+    require.NoError(t, issues.Err())
+
+    // Test pattern converts without error
+    sql, err := cel2sql.Convert(ast)
+    require.NoError(t, err)
+
+    // Test against sample data
+    // ... execute query with test data
+}
+```
+
+### Additional Protection Layers
+
+For defense-in-depth, combine ReDoS protection with:
+
+#### Context Timeouts
+
+```go
+// Timeout conversion after 5 seconds
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+sql, err := cel2sql.Convert(ast, cel2sql.WithContext(ctx))
+if errors.Is(err, context.DeadlineExceeded) {
+    log.Println("Pattern conversion timed out")
+}
+```
+
+#### Input Validation
+
+```go
+// Validate before compiling
+func validateCELExpression(expr string) error {
+    if len(expr) > 1000 {
+        return errors.New("expression too long")
+    }
+    if strings.Count(expr, "(") > 20 {
+        return errors.New("too many nested groups")
+    }
+    return nil
+}
+```
+
+#### Logging
+
+```go
+// Monitor patterns in production
+logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+sql, err := cel2sql.Convert(ast,
+    cel2sql.WithLogger(logger))
+// Logs will show regex conversion details
+```
+
+For more security information, see the [Security Guide](security.md).
+
 ## Common Patterns Reference
 
 ### Validation Patterns

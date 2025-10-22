@@ -65,6 +65,56 @@ func main() {
 ✅ **Rich Features**: JSON/JSONB, arrays, regex, timestamps, and more
 ✅ **Well-Tested**: 100+ tests including integration tests with real PostgreSQL
 ✅ **Easy to Use**: Simple API, comprehensive documentation
+✅ **Secure by Default**: Built-in protections against SQL injection and ReDoS attacks
+
+## Security Features
+
+cel2sql includes comprehensive security protections:
+
+- 🛡️ **Field Name Validation** - Prevents SQL injection via field names
+- 🔒 **JSON Field Escaping** - Automatic quote escaping in JSON paths
+- 🚫 **ReDoS Protection** - Validates regex patterns to prevent catastrophic backtracking
+- ⏱️ **Context Timeouts** - Optional timeout protection for complex expressions
+
+All security features are enabled by default with zero configuration required.
+
+## Advanced Options
+
+cel2sql supports optional advanced features via functional options:
+
+```go
+import (
+    "context"
+    "log/slog"
+    "github.com/spandigital/cel2sql/v2"
+)
+
+// Basic conversion
+sql, err := cel2sql.Convert(ast)
+
+// With schemas for JSON/JSONB support
+sql, err := cel2sql.Convert(ast,
+    cel2sql.WithSchemas(schemas))
+
+// With context for timeouts
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+sql, err := cel2sql.Convert(ast,
+    cel2sql.WithContext(ctx),
+    cel2sql.WithSchemas(schemas))
+
+// With logging for observability
+logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+sql, err := cel2sql.Convert(ast,
+    cel2sql.WithContext(ctx),
+    cel2sql.WithSchemas(schemas),
+    cel2sql.WithLogger(logger))
+```
+
+**Available Options:**
+- `WithSchemas(map[string]pg.Schema)` - Provide table schemas for JSON detection
+- `WithContext(context.Context)` - Enable cancellation and timeouts
+- `WithLogger(*slog.Logger)` - Enable structured logging
 
 ## Common Use Cases
 
@@ -114,6 +164,7 @@ user.scores.all(s, s >= 60)
 - 🔧 **[JSON/JSONB Support](docs/json-support.md)** - Working with JSON data
 - 🎯 **[Array Comprehensions](docs/comprehensions.md)** - Advanced array operations
 - 🔍 **[Regex Matching](docs/regex-matching.md)** - Pattern matching with regex
+- 🛡️ **[Security Guide](docs/security.md)** - Security features and best practices
 - 📚 **[Operators Reference](docs/operators-reference.md)** - Complete operator list
 - 💡 **[Examples](examples/)** - More code examples
 

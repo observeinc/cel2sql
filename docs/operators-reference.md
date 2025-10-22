@@ -281,6 +281,131 @@ age >= 18 ? "adult" : "minor"
 | `duration` | `interval` | Time intervals |
 | `null_type` | `NULL` | Null values |
 
+## Security Considerations
+
+cel2sql includes built-in security protections that are automatically applied to all operations:
+
+### Field Name Validation
+
+All field names used in operators are validated to prevent SQL injection:
+
+```go
+// ✅ Safe: Valid field names
+user.name == "John"
+product.price > 100
+
+// ❌ Blocked: Malicious field names
+field'; DROP TABLE users-- == "value"
+// Error: invalid field name
+```
+
+**Validation rules:**
+- Maximum 63 characters (PostgreSQL limit)
+- Must start with letter or underscore
+- Only alphanumeric and underscore characters
+- SQL reserved keywords blocked
+
+### String Escaping
+
+All string literals in comparisons are properly escaped:
+
+```go
+// Strings with quotes are safely escaped
+name == "O'Brien"
+// SQL: name = 'O''Brien'
+
+// Prevents injection via string values
+field == "'; DROP TABLE users--"
+// SQL: field = '''; DROP TABLE users--'
+```
+
+### JSON Field Security
+
+JSON field names are automatically escaped:
+
+```go
+// Quotes in JSON field names are escaped
+user.preferences.theme'name == "dark"
+// SQL: user.preferences->>'theme''name' = 'dark'
+```
+
+See [JSON/JSONB Support](json-support.md) for more details.
+
+### Regex Pattern Validation
+
+Regex patterns are validated to prevent ReDoS attacks:
+
+```go
+// ✅ Safe patterns allowed
+email.matches(r"^[a-z]+@[a-z]+\.[a-z]+$")
+
+// ❌ Dangerous patterns blocked
+field.matches(r"(a+)+")  // Nested quantifiers
+// Error: nested quantifiers detected
+```
+
+**Pattern limits:**
+- Maximum 500 characters
+- No nested quantifiers
+- Maximum 20 capture groups
+- Maximum 10 nesting levels
+
+See [Regex Matching](regex-matching.md) for more details.
+
+### Operator Safety
+
+All operators are converted using safe, parameterized patterns:
+
+| Security Feature | Protection |
+|------------------|------------|
+| **Comparison operators** | Type-safe conversions |
+| **Logical operators** | Proper boolean handling |
+| **String operations** | Escape special characters |
+| **List operations** | Array boundary checks |
+| **Math operations** | Overflow protection via PostgreSQL |
+
+### Best Practices
+
+1. **Use context timeouts** for user-provided expressions:
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+sql, err := cel2sql.Convert(ast, cel2sql.WithContext(ctx))
+```
+
+2. **Validate expression complexity** before processing:
+```go
+if len(celExpression) > 1000 {
+    return errors.New("expression too complex")
+}
+```
+
+3. **Use prepared statements** when executing generated SQL:
+```go
+stmt, err := db.Prepare("SELECT * FROM table WHERE " + sqlCondition)
+```
+
+4. **Enable logging** to monitor patterns:
+```go
+logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+sql, err := cel2sql.Convert(ast, cel2sql.WithLogger(logger))
+```
+
+5. **Keep schemas minimal** - only expose necessary fields:
+```go
+// ✅ Good: Only expose needed fields
+schema := pg.Schema{
+    {Name: "id", Type: "bigint"},
+    {Name: "name", Type: "text"},
+    {Name: "email", Type: "text"},
+}
+
+// ❌ Avoid: Exposing sensitive fields
+// Don't expose: password_hash, ssn, credit_card, etc.
+```
+
+For comprehensive security information, see the [Security Guide](security.md).
+
 ## See Also
 
 - [Getting Started Guide](getting-started.md)

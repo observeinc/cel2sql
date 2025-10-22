@@ -66,13 +66,16 @@ func main() {
         log.Fatalf("CEL compilation failed: %v", issues.Err())
     }
 
-    // Step 5: Convert to SQL
-    sqlWhere, err := cel2sql.Convert(ast)
+    // Step 5: Get schemas for JSON/JSONB detection
+    schemas := provider.GetSchemas()
+
+    // Step 6: Convert to SQL
+    sqlWhere, err := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
     if err != nil {
         log.Fatalf("Failed to convert to SQL: %v", err)
     }
 
-    // Step 6: Use in your SQL query
+    // Step 7: Use in your SQL query
     query := "SELECT * FROM products WHERE " + sqlWhere
     fmt.Println("Generated SQL:")
     fmt.Println(query)
@@ -146,10 +149,21 @@ if issues != nil && issues.Err() != nil {
 
 ### 5. Convert to SQL
 
-Convert the compiled CEL expression to SQL:
+Convert the compiled CEL expression to SQL using functional options:
 
 ```go
+// Basic conversion
 sqlWhere, err := cel2sql.Convert(ast)
+
+// With schemas for JSON/JSONB support (recommended)
+schemas := provider.GetSchemas()
+sqlWhere, err := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
+
+// With multiple options
+sqlWhere, err := cel2sql.Convert(ast,
+    cel2sql.WithSchemas(schemas),
+    cel2sql.WithContext(ctx),
+    cel2sql.WithLogger(logger))
 ```
 
 ## Dynamic Schema Loading
@@ -201,7 +215,10 @@ func main() {
         log.Fatalf("Compilation error: %v", issues.Err())
     }
 
-    sqlWhere, err := cel2sql.Convert(ast)
+    // Get schemas for JSON/JSONB detection
+    schemas := provider.GetSchemas()
+
+    sqlWhere, err := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
     if err != nil {
         log.Fatalf("Conversion error: %v", err)
     }
@@ -297,6 +314,159 @@ Common errors:
 - **Unknown field**: Field not in schema definition
 - **Type mismatch**: Wrong type for operation (e.g., comparing string to number)
 - **Syntax error**: Invalid CEL expression syntax
+
+## Advanced Options
+
+cel2sql supports optional advanced features via functional options:
+
+### Context Support
+
+Add timeout and cancellation support:
+
+```go
+import "context"
+import "time"
+
+// With timeout
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+sqlWhere, err := cel2sql.Convert(ast,
+    cel2sql.WithContext(ctx),
+    cel2sql.WithSchemas(schemas))
+
+if err != nil {
+    if errors.Is(err, context.DeadlineExceeded) {
+        log.Println("Conversion timed out")
+    }
+}
+```
+
+**Benefits:**
+- Protect against complex expressions
+- Enable cancellation of long-running conversions
+- Integration with distributed tracing
+
+### Structured Logging
+
+Enable observability with structured logging:
+
+```go
+import "log/slog"
+import "os"
+
+// Create logger (JSON for production)
+logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+    Level: slog.LevelDebug,
+}))
+
+// Convert with logging
+sqlWhere, err := cel2sql.Convert(ast,
+    cel2sql.WithSchemas(schemas),
+    cel2sql.WithLogger(logger))
+```
+
+**What gets logged:**
+- JSON path detection decisions
+- Comprehension type identification
+- Schema lookups
+- Performance metrics
+- Error contexts
+
+### Combining Options
+
+You can combine all options together:
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+schemas := provider.GetSchemas()
+
+sqlWhere, err := cel2sql.Convert(ast,
+    cel2sql.WithContext(ctx),
+    cel2sql.WithSchemas(schemas),
+    cel2sql.WithLogger(logger))
+```
+
+See [examples/context](../examples/context/) and [examples/logging](../examples/logging/) for complete working examples.
+
+## Security Best Practices
+
+cel2sql includes built-in security protections that are enabled by default:
+
+### 1. Field Name Validation
+
+All field names are automatically validated to prevent SQL injection:
+
+```go
+// ✅ Safe - valid field names pass through
+product.name == "Laptop"
+
+// ❌ Blocked - prevents SQL injection
+field'; DROP TABLE users--
+```
+
+**Protections:**
+- Maximum field name length (63 chars)
+- Alphanumeric + underscore only
+- Blocks SQL reserved keywords
+- Prevents common injection patterns
+
+### 2. JSON Field Escaping
+
+Single quotes in JSON field names are automatically escaped:
+
+```go
+// CEL with quote in field name
+user.preferences.user'name == "test"
+
+// Generated SQL (safely escaped)
+user.preferences->>'user''name' = 'test'
+```
+
+### 3. ReDoS Protection
+
+Regex patterns are validated to prevent catastrophic backtracking:
+
+```go
+// ✅ Safe patterns allowed
+email.matches(r"[a-z]+@[a-z]+\.[a-z]+")
+
+// ❌ Dangerous patterns blocked
+field.matches(r"(a+)+b")  // Nested quantifiers
+```
+
+**Pattern limits:**
+- Maximum 500 characters
+- No nested quantifiers
+- Maximum 20 capture groups
+- Maximum 10 nesting levels
+
+### 4. Use Context Timeouts
+
+Add defense-in-depth with context timeouts:
+
+```go
+// Protect against complex user expressions
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+sqlWhere, err := cel2sql.Convert(ast,
+    cel2sql.WithContext(ctx),
+    cel2sql.WithSchemas(schemas))
+```
+
+### 5. Additional Best Practices
+
+- **Validate user input** before passing to CEL
+- **Use prepared statements** when executing generated SQL
+- **Keep schemas minimal** - only expose necessary fields
+- **Enable logging** in production to monitor patterns
+- **Test edge cases** with your specific field names
+
+For detailed security information, see the [Security Guide](security.md).
 
 ## Next Steps
 

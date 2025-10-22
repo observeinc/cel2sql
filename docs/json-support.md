@@ -13,12 +13,20 @@ userSchema := pg.Schema{
     {Name: "metadata", Type: "json"},      // JSON column
 }
 
+provider := pg.NewTypeProvider(map[string]pg.Schema{
+    "User": userSchema,
+})
+schemas := provider.GetSchemas()
+
 // CEL: Access JSON field
 user.preferences.theme == "dark"
 
-// Generated SQL:
-user.preferences->>'theme' = 'dark'
+// Generated SQL (with WithSchemas option):
+sql, _ := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
+// user.preferences->>'theme' = 'dark'
 ```
+
+> **🔒 Security Note**: Single quotes in JSON field names are automatically escaped to prevent SQL injection. All field names are validated for safety.
 
 ## JSON vs JSONB
 
@@ -176,27 +184,30 @@ func main() {
         log.Fatal(err)
     }
 
+    // Get schemas for JSON/JSONB detection
+    schemas := provider.GetSchemas()
+
     // Example 1: Simple JSON field access
     ast, _ := env.Compile(`user.preferences.theme == "dark"`)
-    sql, _ := cel2sql.Convert(ast)
+    sql, _ := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
     fmt.Println(sql)
     // Output: user.preferences->>'theme' = 'dark'
 
     // Example 2: Nested JSON fields
     ast, _ = env.Compile(`user.profile.settings.language == "en"`)
-    sql, _ = cel2sql.Convert(ast)
+    sql, _ = cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
     fmt.Println(sql)
     // Output: user.profile->'settings'->>'language' = 'en'
 
     // Example 3: Field existence check
     ast, _ = env.Compile(`has(user.preferences.theme)`)
-    sql, _ = cel2sql.Convert(ast)
+    sql, _ = cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
     fmt.Println(sql)
     // Output: user.preferences ? 'theme'
 
     // Example 4: Combined conditions
     ast, _ = env.Compile(`has(user.preferences.theme) && user.preferences.theme == "dark"`)
-    sql, _ = cel2sql.Convert(ast)
+    sql, _ = cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
     fmt.Println(sql)
     // Output: user.preferences ? 'theme' AND user.preferences->>'theme' = 'dark'
 }
@@ -369,6 +380,72 @@ user.preferences.count == "5"  // count is number, not string
 // ✅ Correct: Use proper type conversion
 int(user.preferences.count) == 5
 ```
+
+## Security Considerations
+
+cel2sql includes automatic security protections for JSON operations:
+
+### Automatic Quote Escaping
+
+Single quotes in JSON field names are automatically escaped to prevent SQL injection:
+
+```go
+// CEL expression with quote in field name
+user.preferences.user'name == "test"
+
+// Generated SQL (safely escaped)
+user.preferences->>'user''name' = 'test'
+
+// Malicious field names are neutralized
+user.data.field' OR '1'='1 == "value"
+// Becomes: user.data->>'field'' OR ''1''=''1' = 'value'
+```
+
+This protection is applied in all JSON operations:
+- Field access (`->>`)
+- Nested paths (`->`)
+- Existence checks (`?`)
+- Path extraction (`jsonb_extract_path_text()`)
+
+### Field Name Validation
+
+All field names (including JSON field names) are validated:
+- Maximum length: 63 characters
+- Must start with letter or underscore
+- Only alphanumeric characters and underscores
+- SQL reserved keywords are blocked
+
+### Best Practices
+
+1. **Use WithSchemas()** - Required for proper JSON detection
+```go
+schemas := provider.GetSchemas()
+sql, err := cel2sql.Convert(ast, cel2sql.WithSchemas(schemas))
+```
+
+2. **Add context timeouts** - Protect against complex JSON operations
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+sql, err := cel2sql.Convert(ast,
+    cel2sql.WithContext(ctx),
+    cel2sql.WithSchemas(schemas))
+```
+
+3. **Use prepared statements** - When executing the generated SQL
+```go
+stmt, err := db.Prepare("SELECT * FROM users WHERE " + sqlWhere)
+```
+
+4. **Validate input** - Always validate user-provided CEL expressions
+```go
+// Check expression complexity before compiling
+if len(celExpression) > 1000 {
+    return errors.New("expression too long")
+}
+```
+
+For more security information, see the [Security Guide](security.md).
 
 ## See Also
 
