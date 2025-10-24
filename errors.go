@@ -57,17 +57,45 @@ func newConversionErrorf(userMsg string, internalFormat string, args ...interfac
 }
 
 // wrapConversionError wraps an existing error with a generic user-facing message
-// Always uses errMsgConversionFailed as the user message to prevent information leakage
+// Always uses errMsgConversionFailed as the user message to prevent information leakage,
+// unless the error is already a formatted error with a specific message that should be preserved
 func wrapConversionError(err error, internalContext string) *ConversionError {
-	internalDetails := internalContext
-	if err != nil {
-		if internalContext != "" {
-			internalDetails = fmt.Sprintf("%s: %v", internalContext, err)
-		} else {
-			internalDetails = err.Error()
+	if err == nil {
+		return &ConversionError{
+			UserMessage:     errMsgConversionFailed,
+			InternalDetails: internalContext,
 		}
 	}
 
+	internalDetails := internalContext
+	if internalContext != "" {
+		internalDetails = fmt.Sprintf("%s: %v", internalContext, err)
+	} else {
+		internalDetails = err.Error()
+	}
+
+	// Check if this is a plain error (not ConversionError) - preserve its message
+	if _, isConversionError := err.(*ConversionError); !isConversionError {
+		return &ConversionError{
+			UserMessage:     err.Error(), // Preserve the original error message
+			InternalDetails: internalDetails,
+			WrappedErr:      err,
+		}
+	}
+
+	// If it's a ConversionError, check if it has a specific (non-generic) user message
+	// that should be preserved through the wrapping chain
+	convErr := err.(*ConversionError)
+	if convErr.UserMessage != errMsgConversionFailed {
+		// This is a specific error message that should be preserved
+		return &ConversionError{
+			UserMessage:     convErr.UserMessage,
+			InternalDetails: internalDetails,
+			WrappedErr:      err,
+		}
+	}
+
+	// For generic ConversionErrors, use generic message
 	return &ConversionError{
 		UserMessage:     errMsgConversionFailed,
 		InternalDetails: internalDetails,
@@ -77,16 +105,17 @@ func wrapConversionError(err error, internalContext string) *ConversionError {
 
 // Common error messages (sanitized for end users)
 const (
-	errMsgUnsupportedExpression    = "unsupported expression type"
-	errMsgInvalidOperator          = "invalid operator in expression"
-	errMsgUnsupportedType          = "unsupported type in expression"
-	errMsgUnsupportedComprehension = "unsupported comprehension operation"
-	errMsgInvalidFieldAccess       = "invalid field access in expression"
-	errMsgConversionFailed         = "failed to convert expression component"
-	errMsgInvalidTimestampOp       = "invalid timestamp operation"
-	errMsgInvalidDuration          = "invalid duration value"
-	errMsgInvalidArguments         = "invalid function arguments"
-	errMsgUnknownType              = "unknown type in schema"
-	errMsgUnknownEnum              = "unknown enum value"
-	errMsgInvalidPattern           = "invalid pattern in expression"
+	errMsgUnsupportedExpression       = "unsupported expression type"
+	errMsgInvalidOperator             = "invalid operator in expression"
+	errMsgUnsupportedType             = "unsupported type in expression"
+	errMsgUnsupportedComprehension    = "unsupported comprehension operation"
+	errMsgComprehensionDepthExceeded  = "comprehension nesting exceeds maximum depth"
+	errMsgInvalidFieldAccess          = "invalid field access in expression"
+	errMsgConversionFailed            = "failed to convert expression component"
+	errMsgInvalidTimestampOp          = "invalid timestamp operation"
+	errMsgInvalidDuration             = "invalid duration value"
+	errMsgInvalidArguments            = "invalid function arguments"
+	errMsgUnknownType                 = "unknown type in schema"
+	errMsgUnknownEnum                 = "unknown enum value"
+	errMsgInvalidPattern              = "invalid pattern in expression"
 )

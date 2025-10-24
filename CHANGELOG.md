@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Security
+- **Nested Comprehension Depth Limits**: Added protection against resource exhaustion from deeply nested comprehensions (fixes #35)
+  - Implemented maximum nesting depth of 3 for CEL comprehensions (all, exists, exists_one, filter, map)
+  - Prevents DoS attacks through expensive nested UNNEST/subquery operations (CWE-400)
+  - Clear error messages guide users to restructure overly complex queries
+  - Example protected pattern: `list1.map(x, list2.filter(y, list3.exists(z, z > y)))` now limited to depth 3
+
 ## [2.10.0] - 2025-10-10
 
 ### Added

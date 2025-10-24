@@ -39,6 +39,10 @@ const (
 	// defaultMaxRecursionDepth is the default maximum recursion depth for visit()
 	// to prevent stack overflow from deeply nested expressions (CWE-674: Uncontrolled Recursion).
 	defaultMaxRecursionDepth = 100
+
+	// maxComprehensionDepth is the maximum nesting depth for CEL comprehensions
+	// to prevent resource exhaustion from deeply nested UNNEST/subquery operations (CWE-400).
+	maxComprehensionDepth = 3
 )
 
 // ConvertOption is a functional option for configuring the Convert function.
@@ -267,16 +271,17 @@ func ConvertParameterized(ast *cel.Ast, opts ...ConvertOption) (*Result, error) 
 }
 
 type converter struct {
-	str          strings.Builder
-	typeMap      map[int64]*exprpb.Type
-	schemas      map[string]pg.Schema
-	ctx          context.Context
-	logger       *slog.Logger
-	depth        int           // Current recursion depth
-	maxDepth     int           // Maximum allowed recursion depth
-	parameterize bool          // Enable parameterized output
-	parameters   []interface{} // Collected parameters for parameterized queries
-	paramCount   int           // Parameter counter for placeholders ($1, $2, etc.)
+	str                 strings.Builder
+	typeMap             map[int64]*exprpb.Type
+	schemas             map[string]pg.Schema
+	ctx                 context.Context
+	logger              *slog.Logger
+	depth               int           // Current recursion depth
+	maxDepth            int           // Maximum allowed recursion depth
+	comprehensionDepth  int           // Current comprehension nesting depth
+	parameterize        bool          // Enable parameterized output
+	parameters          []interface{} // Collected parameters for parameterized queries
+	paramCount          int           // Parameter counter for placeholders ($1, $2, etc.)
 }
 
 // checkContext checks if the context has been cancelled or expired.
@@ -1016,6 +1021,16 @@ func (con *converter) visitCallUnary(expr *exprpb.Expr) error {
 }
 
 func (con *converter) visitComprehension(expr *exprpb.Expr) error {
+	// Track comprehension nesting depth to prevent resource exhaustion (CWE-400)
+	con.comprehensionDepth++
+	defer func() { con.comprehensionDepth-- }()
+
+	// Check comprehension depth limit before context check (fail fast)
+	if con.comprehensionDepth > maxComprehensionDepth {
+		return fmt.Errorf("comprehension nesting depth %d exceeds maximum of %d",
+			con.comprehensionDepth, maxComprehensionDepth)
+	}
+
 	// Check for context cancellation before processing comprehensions (potentially expensive)
 	if err := con.checkContext(); err != nil {
 		return err
