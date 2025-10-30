@@ -26,3 +26,7 @@ examples/*/main.exe
 
 # Coverage reports
 coverage.html
+
+# Benchmark comparison files
+bench-old.txt
+bench-new.txt
