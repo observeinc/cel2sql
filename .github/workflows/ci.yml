@@ -65,4 +65,16 @@ jobs:
       run: go mod download
 
     - name: Run benchmarks
-      run: go test -bench=. -benchmem -benchtime=1s -run=^$$ ./...
+      run: go test -bench=. -benchmem -benchtime=1s -run=^$$ ./... | tee benchmark-results.txt
+
+    - name: Store benchmark result
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        tool: 'go'
+        output-file-path: benchmark-results.txt
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true
+        comment-on-alert: true
+        alert-threshold: '150%'
+        fail-on-alert: false
+        summary-always: true

@@ -266,9 +266,10 @@ BenchmarkConvertOperators/logical_and-12   943438    1255 ns/op    2154 B/op    
 
 Benchmarks run automatically on every PR and push to main:
 - Runs on Go 1.24.x
-- Validates that all benchmarks complete successfully
-- Detects performance regressions
-- Ensures code changes don't break benchmark tests
+- Stores benchmark results in gh-pages branch for historical tracking
+- Comments on PRs when performance changes >150%
+- Generates visual charts at https://spandigital.github.io/cel2sql/dev/bench/
+- Provides summary of all benchmark results
 
 #### Comparing Benchmark Results
 
