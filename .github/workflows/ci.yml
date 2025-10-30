@@ -50,6 +50,8 @@ jobs:
   benchmark:
     name: Benchmark
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to push to gh-pages branch
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
