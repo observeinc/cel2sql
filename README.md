@@ -5,6 +5,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-blue)](https://golang.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-blue)](https://www.postgresql.org)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Benchmarks](https://img.shields.io/badge/benchmarks-performance%20tracking-green)](https://spandigital.github.io/cel2sql/dev/bench/)
 
 **cel2sql** makes it easy to build dynamic SQL queries using CEL expressions. Write type-safe, expressive filters in CEL and automatically convert them to PostgreSQL-compatible SQL.
 
@@ -66,6 +67,7 @@ func main() {
 ✅ **Well-Tested**: 100+ tests including integration tests with real PostgreSQL
 ✅ **Easy to Use**: Simple API, comprehensive documentation
 ✅ **Secure by Default**: Built-in protections against SQL injection and ReDoS attacks
+✅ **Performance Tracked**: [Continuous benchmark monitoring](https://spandigital.github.io/cel2sql/dev/bench/) to prevent regressions
 
 ## Security Features
 
