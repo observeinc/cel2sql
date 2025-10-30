@@ -266,9 +266,9 @@ BenchmarkConvertOperators/logical_and-12   943438    1255 ns/op    2154 B/op    
 
 Benchmarks run automatically on every PR and push to main:
 - Runs on Go 1.24.x
-- Stores benchmark results for historical tracking
-- Comments on PRs if performance degrades >150%
-- Provides summary of all benchmark results
+- Validates that all benchmarks complete successfully
+- Detects performance regressions
+- Ensures code changes don't break benchmark tests
 
 #### Comparing Benchmark Results
 
