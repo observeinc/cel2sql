@@ -8,7 +8,7 @@ cel2sql converts CEL (Common Expression Language) expressions to PostgreSQL SQL 
 
 **Module**: `github.com/spandigital/cel2sql/v2`
 **Go Version**: 1.24+
-**Current Version**: v2.12.0
+**Current Version**: v2.12.1
 
 ## Common Development Commands
 
