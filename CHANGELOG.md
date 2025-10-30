@@ -2,6 +2,46 @@
 
 ## [Unreleased]
 
+## [3.2.0] - 2025-10-31
+
+### Fixed
+- **Standardized Error Message Format** (fixes #38, #83)
+  - Added 16 exported sentinel errors (`ErrUnsupportedExpression`, `ErrInvalidFieldName`, etc.) to enable `errors.Is()` checking
+  - Improved error wrapping with consistent `fmt.Errorf()` and `%w` patterns across ~60 error sites
+  - Enhanced error messages with operation context for better debugging
+  - Maintained security-conscious error handling (no credential exposure in pg package)
+  - Benefits: Better debugging, programmatic error handling, improved maintainability
+
+- **Byte Array Length Validation** (fixes #36, #82)
+  - Added maximum byte array length limit of 10,000 bytes to prevent resource exhaustion (CWE-400)
+  - Protection applies to non-parameterized mode (hex encoding causes 4x expansion)
+  - Parameterized mode bypasses limit (bytes passed directly to database driver)
+  - Clear error messages guide users when limits are exceeded
+
+### Added
+- **Comprehensive Performance Benchmarks in CI/CD** (fixes #52)
+  - Automated benchmark tracking with historical data storage on GitHub Pages
+  - Visual performance charts at https://spandigital.github.io/cel2sql/dev/bench/
+  - PR comments when performance changes exceed 150%
+  - Benchmarks cover all major features: operators, comprehensions, JSON, regex, timestamps
+
+## [3.1.0] - 2025-10-30
+
+### Added
+- **Query Analysis and Index Recommendations** (fixes #50, #81)
+  - New `AnalyzeQuery()` function to analyze CEL expressions and recommend database indexes
+  - Automatic detection of B-tree, GIN, and GIN with pg_trgm index opportunities
+  - Support for JSON path operations, array operations, and regex pattern matching
+  - Complete working example in `examples/index_analysis/`
+  - Benefits: Discover missing indexes, optimize query performance, improve production monitoring
+
+### Documentation
+- **Regex Conversion Limitations** (fixes #46, #80)
+  - Added detailed documentation of automatic RE2 to POSIX regex conversions
+  - Listed unsupported RE2 features that will return errors (lookahead, lookbehind, named groups)
+  - Added examples of supported character class conversions (`\d`, `\w`, `\s`, `\b`)
+  - Clarified case-insensitive flag handling with `~*` operator
+
 ## [3.0.0] - 2025-10-30
 
 ### Breaking Changes
