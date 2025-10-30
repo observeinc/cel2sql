@@ -1,6 +1,6 @@
 # Makefile for cel2sql project
 
-.PHONY: build test lint fmt clean help install-tools deps vuln-check
+.PHONY: build test bench lint fmt clean help install-tools deps vuln-check
 
 # Build the project
 build:
@@ -9,6 +9,17 @@ build:
 # Run tests
 test:
 	go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+
+# Run benchmarks
+bench:
+	go test -bench=. -benchmem -run=^$$ ./...
+
+# Run benchmarks with comparison output
+bench-compare:
+	@echo "Running benchmarks and saving to bench-new.txt"
+	@go test -bench=. -benchmem -run=^$$ ./... | tee bench-new.txt
+	@echo ""
+	@echo "Compare with previous run using: benchstat bench-old.txt bench-new.txt"
 
 # Run tests with coverage report
 test-coverage: test
@@ -65,6 +76,8 @@ help:
 	@echo "Available targets:"
 	@echo "  build         - Build the project"
 	@echo "  test          - Run tests"
+	@echo "  bench         - Run benchmarks"
+	@echo "  bench-compare - Run benchmarks and save for comparison"
 	@echo "  test-coverage - Run tests with coverage report"
 	@echo "  lint          - Run linting"
 	@echo "  fmt           - Format code"

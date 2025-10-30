@@ -17,6 +17,8 @@ cel2sql converts CEL (Common Expression Language) expressions to PostgreSQL SQL 
 make build              # Build the project
 make test               # Run tests with race detection and coverage
 make test-coverage      # Generate HTML coverage report
+make bench              # Run performance benchmarks
+make bench-compare      # Run benchmarks and save for comparison
 ```
 
 ### Code Quality
@@ -166,6 +168,133 @@ These validations prevent PostgreSQL syntax errors and ensure predictable behavi
 - Include tests for nested types, arrays, and JSON fields
 - Verify SQL output matches PostgreSQL syntax (single quotes, proper functions)
 - Use testcontainers for integration tests with real PostgreSQL
+
+### Performance Benchmarks
+
+cel2sql includes comprehensive benchmarks to track performance and detect regressions. Benchmarks are automatically run as part of the CI/CD pipeline.
+
+#### Running Benchmarks Locally
+
+```bash
+# Run all benchmarks
+make bench
+
+# Run benchmarks and save output for comparison
+make bench-compare
+
+# Run specific benchmark
+go test -bench=BenchmarkConvertSimple -benchmem ./...
+
+# Run benchmarks with custom duration
+go test -bench=. -benchmem -benchtime=5s ./...
+```
+
+#### Benchmark Categories
+
+The benchmark suite covers all major conversion features:
+
+**Simple Operations** (`BenchmarkConvertSimple`)
+- Field comparisons (equality, greater than, less than)
+- String operations (equality checks)
+- Boolean checks
+
+**Operators** (`BenchmarkConvertOperators`)
+- Logical operators (AND, OR)
+- Arithmetic operators (+, -, *, /, %)
+- String concatenation
+- Complex nested expressions
+
+**Comprehensions** (`BenchmarkConvertComprehensions`)
+- `all()` - Universal quantification
+- `exists()` - Existential quantification
+- `exists_one()` - Unique existence
+- `filter()` - Array filtering
+- `map()` - Array transformation
+
+**JSON/JSONB** (`BenchmarkConvertJSONPath`)
+- Simple and nested JSON field access
+- JSON field existence checks (`has()`)
+- JSON field comparisons
+- Complex JSON expressions
+
+**Regex** (`BenchmarkConvertRegex`)
+- Simple patterns
+- Case-insensitive patterns
+- Character classes (\\d, \\w, \\s)
+- Word boundaries (\\b)
+
+**Complex Expressions** (`BenchmarkConvertDeeplyNested`, `BenchmarkConvertLargeExpression`)
+- Deeply nested AND/OR chains
+- Nested parentheses
+- Ternary operators
+- Large expressions with many conditions
+
+**Timestamps** (`BenchmarkConvertTimestamps`)
+- Timestamp comparisons
+- Date/time function calls
+- DateTime operations
+
+**String Operations** (`BenchmarkConvertStringOperations`)
+- startsWith, endsWith, contains
+- String concatenation
+- Multiple string operations combined
+
+**Query Analysis** (`BenchmarkAnalyzeQuery`)
+- Index recommendation generation
+- Pattern detection for optimization
+
+**Options** (`BenchmarkConvertWithOptions`)
+- Various conversion option combinations
+- Schema usage overhead
+- Max depth and output length limits
+
+#### Benchmark Output
+
+Benchmarks report:
+- **Iterations**: Number of times the operation was executed
+- **ns/op**: Nanoseconds per operation (lower is better)
+- **B/op**: Bytes allocated per operation (lower is better)
+- **allocs/op**: Number of allocations per operation (lower is better)
+
+Example output:
+```
+BenchmarkConvertSimple/equality-12     1412060    848.7 ns/op    1593 B/op    25 allocs/op
+BenchmarkConvertOperators/logical_and-12   943438    1255 ns/op    2154 B/op    36 allocs/op
+```
+
+#### CI/CD Integration
+
+Benchmarks run automatically on every PR and push to main:
+- Runs on Go 1.24.x
+- Stores benchmark results for historical tracking
+- Comments on PRs if performance degrades >150%
+- Provides summary of all benchmark results
+
+#### Comparing Benchmark Results
+
+To compare benchmarks between two runs:
+
+```bash
+# Run benchmarks and save baseline
+make bench-compare  # Saves to bench-new.txt
+
+# Make changes to code
+
+# Run benchmarks again and compare
+mv bench-new.txt bench-old.txt
+make bench-compare
+
+# Install benchstat for detailed comparison (optional)
+go install golang.org/x/perf/cmd/benchstat@latest
+benchstat bench-old.txt bench-new.txt
+```
+
+#### When to Run Benchmarks
+
+- Before and after performance optimizations
+- When modifying core conversion logic
+- When adding new features that may impact performance
+- To validate that changes don't cause regressions
 
 ## Common Patterns
 
