@@ -104,10 +104,45 @@ The library uses CEL's protobuf-based type system (`exprpb.Type`, `exprpb.Expr`)
 **Structured Types:**
 - `json`, `jsonb` → `decls.Dyn` (with automatic JSON path support)
 - Arrays: Set `Repeated: true` in schema
+- Multi-dimensional arrays: Set `Repeated: true` and `Dimensions: N` in schema
 - Composite types: Use nested `Schema` fields
 
 **Unsupported Types:**
 Unknown PostgreSQL types (e.g., `point`, `polygon`, `box`, custom enums) will cause `FindStructFieldType()` to return `found=false`. This prevents silent type mismatches. Add explicit support for custom types or use composite type definitions.
+
+### Multi-Dimensional Array Support
+
+cel2sql supports PostgreSQL multi-dimensional arrays (1D, 2D, 3D, 4D+) with automatic dimension detection.
+
+**Dimension Detection:**
+- Automatically detects dimensions from PostgreSQL type strings via `detectArrayDimensions()`
+- Supports bracket notation: `integer[]` (1D), `integer[][]` (2D), `integer[][][]` (3D)
+- Supports underscore notation: `_int4` (1D), `_int4[]` (2D), `_int4[][]` (3D)
+- Correctly combines both notations (e.g., `_int4[]` = 2D: 1 from underscore + 1 from bracket)
+
+**Schema Definition:**
+```go
+schema := pg.NewSchema([]pg.FieldSchema{
+    {Name: "tags", Type: "text", Repeated: true, Dimensions: 1},      // 1D: text[]
+    {Name: "matrix", Type: "integer", Repeated: true, Dimensions: 2},  // 2D: integer[][]
+    {Name: "cube", Type: "float", Repeated: true, Dimensions: 3},      // 3D: float[][][]
+})
+```
+
+**SQL Generation:**
+- `size()` function automatically uses correct dimension in `ARRAY_LENGTH(field, dimension)`
+- Example: `size(matrix)` where `matrix integer[][]` → `COALESCE(ARRAY_LENGTH(matrix, 2), 0)`
+- Dimension lookup uses CEL typeMap for accurate type resolution in `getArrayDimension()`
+
+**Backward Compatibility:**
+- Arrays without schema information default to dimension 1
+- Explicit `Dimensions: 0` defaults to dimension 1
+- Existing code continues to work without changes
+
+**Implementation Details:**
+- `pg/provider.go`: Contains `detectArrayDimensions()` and dimension detection logic
+- `cel2sql.go`: Contains `getArrayDimension()` that uses CEL typeMap for lookup
+- `LoadTableSchema()`: Queries `udt_name` column to detect dimensions from database
 
 ### JSON/JSONB Support
 

@@ -315,6 +315,32 @@ user.scores.all(s, s >= 60)
 // SQL: NOT EXISTS (SELECT 1 FROM UNNEST(user.scores) AS s WHERE NOT (s >= 60))
 ```
 
+### 6. Multi-Dimensional Arrays
+
+cel2sql supports PostgreSQL multi-dimensional arrays (1D, 2D, 3D, 4D+) with automatic dimension detection:
+
+```go
+// Define schema with multi-dimensional arrays
+schema := pg.NewSchema([]pg.FieldSchema{
+    {Name: "tags", Type: "text", Repeated: true, Dimensions: 1},      // 1D: text[]
+    {Name: "matrix", Type: "integer", Repeated: true, Dimensions: 2},  // 2D: integer[][]
+    {Name: "cube", Type: "float", Repeated: true, Dimensions: 3},      // 3D: float[][][]
+})
+
+// CEL: size() automatically uses correct dimension
+ast, _ := env.Compile("size(data.matrix) > 0")
+// SQL: COALESCE(ARRAY_LENGTH(data.matrix, 2), 0) > 0
+
+// Or load dimensions automatically from database
+provider, _ := pg.NewTypeProviderWithConnection(ctx, connString)
+provider.LoadTableSchema(ctx, "products")  // Dimensions detected from schema
+```
+
+**Dimension Detection:**
+- Detects dimensions from PostgreSQL type strings (`integer[][]`, `_int4[]`)
+- Works with both bracket notation and underscore notation
+- Defaults to 1D for backward compatibility when no schema is provided
+
 ## Documentation
 
 - 📖 **[Getting Started Guide](docs/getting-started.md)** - Step-by-step tutorial
@@ -333,6 +359,7 @@ user.scores.all(s, s >= 60)
 | Logic | `active && verified` | `active IS TRUE AND verified IS TRUE` |
 | Strings | `name.startsWith("A")` | `name LIKE 'A%'` |
 | Lists | `"admin" in roles` | `'admin' IN UNNEST(roles)` |
+| Multi-Dim Arrays | `size(matrix) > 0` | `COALESCE(ARRAY_LENGTH(matrix, 2), 0) > 0` |
 | JSON | `data.key == "value"` | `data->>'key' = 'value'` |
 | Regex | `email.matches(r".*@test\.com")` | `email ~ '.*@test\.com'` |
 | Dates | `created_at.getFullYear() == 2024` | `EXTRACT(YEAR FROM created_at) = 2024` |

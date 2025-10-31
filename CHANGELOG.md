@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+- **Multi-Dimensional Array Support** (fixes #49)
+  - Added `Dimensions` field to `pg.FieldSchema` to store array dimensionality (1D, 2D, 3D, 4D+)
+  - Implemented `detectArrayDimensions()` to automatically detect dimensions from PostgreSQL type strings
+    * Supports bracket notation: `integer[]` (1D), `integer[][]` (2D), `integer[][][]` (3D)
+    * Supports underscore notation: `_int4` (1D), `_int4[]` (2D), `_int4[][]` (3D)
+    * Correctly combines both notations (e.g., `_int4[]` = 2D array)
+  - Updated `LoadTableSchema()` to query `udt_name` column and detect dimensions automatically
+  - Modified `getArrayDimension()` to use CEL typeMap for accurate type resolution
+  - Enhanced ARRAY_LENGTH SQL generation to use detected dimensions: `ARRAY_LENGTH(field, N)`
+  - Full backward compatibility: defaults to dimension 1 when no schema provided
+  - Comprehensive test coverage: 22 unit tests + integration tests for 1D-4D arrays
+  - Example: `size(matrix)` where `matrix integer[][]` → `COALESCE(ARRAY_LENGTH(matrix, 2), 0)`
+
 ## [3.4.0] - 2025-10-31
 
 ### Added
