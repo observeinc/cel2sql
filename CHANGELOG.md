@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [3.4.0] - 2025-10-31
+
 ### Added
 - **Multi-Dimensional Array Support** (fixes #49)
   - Added `Dimensions` field to `pg.FieldSchema` to store array dimensionality (1D, 2D, 3D, 4D+)
@@ -16,9 +18,6 @@
   - Comprehensive test coverage: 22 unit tests + integration tests for 1D-4D arrays
   - Example: `size(matrix)` where `matrix integer[][]` → `COALESCE(ARRAY_LENGTH(matrix, 2), 0)`
 
-## [3.4.0] - 2025-10-31
-
-### Added
 - **CEL String Extension Functions: split(), join(), format()** (fixes #87)
   - Implemented `split(delimiter [, limit])` → `STRING_TO_ARRAY()` with full limit support
     * Basic splitting: `"a,b,c".split(",")` → `STRING_TO_ARRAY('a,b,c', ',')`
@@ -42,6 +41,15 @@
   - Performance benchmarks added
   - Working example in `examples/string_extensions/`
   - Note: `quote()` not implemented (not part of CEL `ext.Strings()` standard extension)
+
+### Fixed
+- **Comprehension Pattern Matching Validation** (fixes #44)
+  - Strengthened `analyzeComprehensionPattern()` with result expression validation for all comprehension types
+  - Added validation that result expressions match expected patterns (identity, append, count, etc.)
+  - Enhanced `isConditionalCountStep()` to validate exact accumulator increment structure (accu + 1)
+  - Prevents potential misidentification of custom hand-written accumulator expressions
+  - Added comprehensive edge case tests in `comprehensions_edge_cases_test.go` (22 test cases)
+  - Covers pattern detection order, complex nested expressions, empty lists, chained operations
 
 ## [3.3.0] - 2025-10-31
 
