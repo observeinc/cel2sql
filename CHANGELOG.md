@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+## [3.3.0] - 2025-10-31
+
+### Fixed
+- **LIKE Pattern Escaping** (fixes #40, #43, #84)
+  - Fixed LIKE pattern escaping to use ESCAPE E'\\' syntax for proper backslash handling
+  - Updated startsWith() and endsWith() to properly escape special LIKE characters (%, _, \)
+  - Prevents SQL syntax errors from patterns containing backslashes
+
+- **JSON Comprehensions** (fixes #48, #84)
+  - Fixed comprehensions over JSON arrays to properly use jsonb_array_elements()
+  - Corrects SQL generation for expressions like `data.items.all(i, i.quantity > 0)`
+  - Ensures JSON array comprehensions work correctly with PostgreSQL
+
+- **String Functions Panic** (fixes #85, #86)
+  - Fixed panic: index out of range when using CEL string extension functions as methods
+  - Added defensive checks in callCasting, visitCallIndex, visitCallMapIndex, visitCallListIndex, visitCallUnary
+  - All string functions now properly handle both method calls (target) and function calls (args)
+
+### Added
+- **CEL String Extension Functions** (#86)
+  - Implemented 10 CEL string extension functions with PostgreSQL SQL conversion:
+    * `lowerAscii()` → `LOWER()`
+    * `upperAscii()` → `UPPER()`
+    * `trim()` → `TRIM()`
+    * `charAt(index)` → `SUBSTRING(str, index+1, 1)`
+    * `indexOf(search, [offset])` → `POSITION()` with -1 for not found
+    * `lastIndexOf(search)` → Uses `REVERSE()` logic
+    * `substring(start, [end])` → `SUBSTRING()` with proper index conversion
+    * `replace(old, new, [limit])` → `REPLACE()` (limit=-1 only)
+    * `reverse()` → `REVERSE()`
+  - Clear error messages for unsupported functions (split, join, format, quote)
+  - Comprehensive test coverage in string_functions_test.go
+
 ## [3.2.0] - 2025-10-31
 
 ### Fixed
