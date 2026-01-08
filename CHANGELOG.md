@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-01-08
+
+### Changed
+- **Go 1.25.5 Requirement** (#96)
+  - Upgraded minimum Go version from 1.24 to 1.25.5
+  - Fixed 21 security vulnerabilities in Go standard library:
+    * 16 stdlib vulnerabilities
+    * 3 golang.org/x/crypto vulnerabilities
+    * 2 uncalled vulnerabilities
+  - Updated all CI workflows to use Go 1.25.x
+  - Removed Go 1.24.x from test matrix
+  - Upgraded golangci-lint to v2.6 for Go 1.25 compatibility
+
+- **Dependency Updates**
+  - golang.org/x/crypto: v0.45.0 → v0.46.0 (#97)
+  - github.com/docker/docker: v28.5.1 → v28.5.2 (#97)
+  - github.com/jackc/pgx/v5: v5.7.5 → v5.8.0 (#95)
+  - github.com/testcontainers/testcontainers-go/modules/postgres: v0.38.0 → v0.40.0 (#94)
+  - golang.org/x/sync: v0.18.0 → v0.19.0
+  - golang.org/x/sys: v0.38.0 → v0.39.0
+  - golang.org/x/text: v0.31.0 → v0.32.0
+  - golang.org/x/term: v0.37.0 → v0.38.0
+
+### Fixed
+- Fixed perfsprint linting errors by replacing string concatenation with strings.Builder (#96)
+
+### Added
+- **Test Coverage Improvements** (#92)
+  - Added comprehensive test coverage for priority functions
+  - Enhanced test suite for existing functionality
+
 ## [3.4.0] - 2025-10-31
 
 ### Added
