@@ -3,8 +3,8 @@ package testutil_test
 import (
 	"testing"
 
-	"github.com/spandigital/cel2sql/v3/dialect"
-	"github.com/spandigital/cel2sql/v3/testutil"
+	"github.com/observeinc/cel2sql/v3/dialect"
+	"github.com/observeinc/cel2sql/v3/testutil"
 )
 
 func TestSQLiteSharedCases(t *testing.T) {

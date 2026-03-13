@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/spandigital/cel2sql/v3"
-	"github.com/spandigital/cel2sql/v3/dialect"
-	"github.com/spandigital/cel2sql/v3/testcases"
+	"github.com/observeinc/cel2sql/v3"
+	"github.com/observeinc/cel2sql/v3/dialect"
+	"github.com/observeinc/cel2sql/v3/testcases"
 )
 
 // RunConvertTests runs a set of ConvertTestCase entries for a given dialect.

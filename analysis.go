@@ -11,8 +11,8 @@ import (
 	"github.com/google/cel-go/common/overloads"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 
-	"github.com/spandigital/cel2sql/v3/dialect"
-	"github.com/spandigital/cel2sql/v3/dialect/postgres"
+	"github.com/observeinc/cel2sql/v3/dialect"
+	"github.com/observeinc/cel2sql/v3/dialect/postgres"
 )
 
 // Index type constants for recommendations (kept for backward compatibility).

@@ -7,8 +7,8 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/spandigital/cel2sql/v3/pg"
-	"github.com/spandigital/cel2sql/v3/test"
+	"github.com/observeinc/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3/test"
 )
 
 func Test_typeProvider_FindStructType(t *testing.T) {

@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
-	"github.com/spandigital/cel2sql/v3"
-	sqliteDialect "github.com/spandigital/cel2sql/v3/dialect/sqlite"
-	"github.com/spandigital/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3"
+	sqliteDialect "github.com/observeinc/cel2sql/v3/dialect/sqlite"
+	"github.com/observeinc/cel2sql/v3/pg"
 )
 
 // TestSQLiteOperatorsIntegration validates operator conversions against a real SQLite database.

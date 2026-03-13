@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/spandigital/cel2sql/v3"
-	"github.com/spandigital/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3"
+	"github.com/observeinc/cel2sql/v3/pg"
 )
 
 // TestLoggingWithDiscard verifies that default behavior uses discard handler (zero overhead)

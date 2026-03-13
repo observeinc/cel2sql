@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/cel-go/cel"
-	"github.com/spandigital/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3/pg"
 	"github.com/stretchr/testify/require"
 )
 

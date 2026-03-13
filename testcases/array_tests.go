@@ -1,6 +1,6 @@
 package testcases
 
-import "github.com/spandigital/cel2sql/v3/dialect"
+import "github.com/observeinc/cel2sql/v3/dialect"
 
 // ArrayTests returns test cases for array operations.
 func ArrayTests() []ConvertTestCase {

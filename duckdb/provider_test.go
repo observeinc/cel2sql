@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/spandigital/cel2sql/v3/duckdb"
+	"github.com/observeinc/cel2sql/v3/duckdb"
 )
 
 func TestNewTypeProvider(t *testing.T) {

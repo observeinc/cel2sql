@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 cel2sql converts CEL (Common Expression Language) expressions to SQL conditions. It supports multiple SQL dialects: PostgreSQL (default), MySQL, SQLite, DuckDB, and BigQuery.
 
-**Module**: `github.com/spandigital/cel2sql/v3`
+**Module**: `github.com/observeinc/cel2sql/v3`
 **Go Version**: 1.24+
 **Current Version**: v3.0.0
 

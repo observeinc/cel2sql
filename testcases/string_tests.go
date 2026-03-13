@@ -1,6 +1,6 @@
 package testcases
 
-import "github.com/spandigital/cel2sql/v3/dialect"
+import "github.com/observeinc/cel2sql/v3/dialect"
 
 // StringTests returns test cases for string functions.
 func StringTests() []ConvertTestCase {

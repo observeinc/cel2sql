@@ -1,6 +1,6 @@
 package testcases
 
-import "github.com/spandigital/cel2sql/v3/dialect"
+import "github.com/observeinc/cel2sql/v3/dialect"
 
 // JSONTests returns test cases for JSON/JSONB field access and operations.
 // These tests require the "json_schema" environment setup.

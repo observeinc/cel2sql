@@ -12,9 +12,9 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcmysql "github.com/testcontainers/testcontainers-go/modules/mysql"
 
-	"github.com/spandigital/cel2sql/v3"
-	mysqlDialect "github.com/spandigital/cel2sql/v3/dialect/mysql"
-	"github.com/spandigital/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3"
+	mysqlDialect "github.com/observeinc/cel2sql/v3/dialect/mysql"
+	"github.com/observeinc/cel2sql/v3/pg"
 )
 
 // setupMySQLContainer starts a MySQL 8 container and returns a database connection.

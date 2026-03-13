@@ -1,4 +1,4 @@
-module github.com/spandigital/cel2sql/v3
+module github.com/observeinc/cel2sql/v3
 
 go 1.25.7
 

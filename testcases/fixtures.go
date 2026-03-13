@@ -1,8 +1,8 @@
 package testcases
 
 import (
-	"github.com/spandigital/cel2sql/v3/pg"
-	"github.com/spandigital/cel2sql/v3/schema"
+	"github.com/observeinc/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3/schema"
 )
 
 // EnvDefault is the default environment setup name (basic types, no schema).

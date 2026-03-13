@@ -1,6 +1,9 @@
 # cel2sql
 
-> Convert [CEL (Common Expression Language)](https://cel.dev/) expressions to SQL for PostgreSQL, MySQL, SQLite, DuckDB, and BigQuery
+> **Fork of [SPANDigital/cel2sql](https://github.com/SPANDigital/cel2sql)** maintained by Observe, Inc.
+> Module path changed from `github.com/spandigital/cel2sql/v3` to `github.com/observeinc/cel2sql/v3`.
+
+Convert [CEL (Common Expression Language)](https://cel.dev/) expressions to SQL for PostgreSQL, MySQL, SQLite, DuckDB, and BigQuery
 
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-blue)](https://golang.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791)](https://www.postgresql.org)
@@ -18,7 +21,7 @@
 ### Installation
 
 ```bash
-go get github.com/spandigital/cel2sql/v3
+go get github.com/observeinc/cel2sql/v3
 ```
 
 ### Basic Example
@@ -29,8 +32,8 @@ package main
 import (
     "fmt"
     "github.com/google/cel-go/cel"
-    "github.com/spandigital/cel2sql/v3"
-    "github.com/spandigital/cel2sql/v3/pg"
+    "github.com/observeinc/cel2sql/v3"
+    "github.com/observeinc/cel2sql/v3/pg"
 )
 
 func main() {
@@ -95,7 +98,7 @@ cel2sql supports optional advanced features via functional options:
 import (
     "context"
     "log/slog"
-    "github.com/spandigital/cel2sql/v3"
+    "github.com/observeinc/cel2sql/v3"
 )
 
 // Basic conversion
@@ -133,11 +136,11 @@ cel2sql supports 5 SQL dialects. PostgreSQL is the default; select other dialect
 
 ```go
 import (
-    "github.com/spandigital/cel2sql/v3"
-    "github.com/spandigital/cel2sql/v3/dialect/mysql"
-    "github.com/spandigital/cel2sql/v3/dialect/sqlite"
-    "github.com/spandigital/cel2sql/v3/dialect/duckdb"
-    "github.com/spandigital/cel2sql/v3/dialect/bigquery"
+    "github.com/observeinc/cel2sql/v3"
+    "github.com/observeinc/cel2sql/v3/dialect/mysql"
+    "github.com/observeinc/cel2sql/v3/dialect/sqlite"
+    "github.com/observeinc/cel2sql/v3/dialect/duckdb"
+    "github.com/observeinc/cel2sql/v3/dialect/bigquery"
 )
 
 // PostgreSQL (default - no option needed)
@@ -175,11 +178,11 @@ sql, err := cel2sql.Convert(ast, cel2sql.WithDialect(bigquery.New()))
 Each dialect has its own type provider for mapping database types to CEL types. All providers support both pre-defined schemas (`NewTypeProvider`) and dynamic schema loading (`LoadTableSchema`):
 
 ```go
-import "github.com/spandigital/cel2sql/v3/pg"       // PostgreSQL (pgxpool connection string)
-import "github.com/spandigital/cel2sql/v3/mysql"     // MySQL (*sql.DB)
-import "github.com/spandigital/cel2sql/v3/sqlite"    // SQLite (*sql.DB)
-import "github.com/spandigital/cel2sql/v3/duckdb"    // DuckDB (*sql.DB)
-import "github.com/spandigital/cel2sql/v3/bigquery"  // BigQuery (*bigquery.Client)
+import "github.com/observeinc/cel2sql/v3/pg"       // PostgreSQL (pgxpool connection string)
+import "github.com/observeinc/cel2sql/v3/mysql"     // MySQL (*sql.DB)
+import "github.com/observeinc/cel2sql/v3/sqlite"    // SQLite (*sql.DB)
+import "github.com/observeinc/cel2sql/v3/duckdb"    // DuckDB (*sql.DB)
+import "github.com/observeinc/cel2sql/v3/bigquery"  // BigQuery (*bigquery.Client)
 ```
 
 ## Query Analysis and Index Recommendations
@@ -488,7 +491,7 @@ Load table schemas directly from your database at runtime instead of defining th
 ### PostgreSQL
 
 ```go
-import "github.com/spandigital/cel2sql/v3/pg"
+import "github.com/observeinc/cel2sql/v3/pg"
 
 // PostgreSQL accepts a connection string and manages its own connection pool
 provider, _ := pg.NewTypeProviderWithConnection(ctx, "postgres://user:pass@localhost/db")
@@ -508,7 +511,7 @@ env, _ := cel.NewEnv(
 import (
     "database/sql"
     _ "github.com/go-sql-driver/mysql"
-    "github.com/spandigital/cel2sql/v3/mysql"
+    "github.com/observeinc/cel2sql/v3/mysql"
 )
 
 // MySQL accepts a *sql.DB — you own the connection
@@ -533,7 +536,7 @@ sql, _ := cel2sql.Convert(ast, cel2sql.WithDialect(mysqlDialect.New()),
 import (
     "database/sql"
     _ "modernc.org/sqlite"
-    "github.com/spandigital/cel2sql/v3/sqlite"
+    "github.com/observeinc/cel2sql/v3/sqlite"
 )
 
 db, _ := sql.Open("sqlite", "mydb.sqlite")
@@ -556,7 +559,7 @@ sql, _ := cel2sql.Convert(ast, cel2sql.WithDialect(sqliteDialect.New()),
 ```go
 import (
     "database/sql"
-    "github.com/spandigital/cel2sql/v3/duckdb"
+    "github.com/observeinc/cel2sql/v3/duckdb"
 )
 
 // DuckDB accepts *sql.DB — works with any DuckDB driver (requires CGO)
@@ -580,7 +583,7 @@ sql, _ := cel2sql.Convert(ast, cel2sql.WithDialect(duckdbDialect.New()),
 ```go
 import (
     "cloud.google.com/go/bigquery"
-    bqprovider "github.com/spandigital/cel2sql/v3/bigquery"
+    bqprovider "github.com/observeinc/cel2sql/v3/bigquery"
 )
 
 // BigQuery uses the BigQuery client API (not database/sql)

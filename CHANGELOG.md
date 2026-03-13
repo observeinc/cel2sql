@@ -338,7 +338,7 @@ has(properties.visibility)                     // → properties->'visibility' I
 ## [2.7.2] - 2025-07-19
 
 ### BREAKING CHANGES
-- **Module Path Update**: Updated module path to `github.com/spandigital/cel2sql/v3` for Go module versioning compliance
+- **Module Path Update**: Updated module path to `github.com/observeinc/cel2sql/v3` for Go module versioning compliance
 - **Import Changes Required**: All users must update their imports to include the `/v2` suffix
 
 ### Fixed
@@ -350,14 +350,14 @@ Users must update their import statements:
 
 ```go
 // OLD (v2.7.1 and earlier)
-import "github.com/spandigital/cel2sql"
-import "github.com/spandigital/cel2sql/pg"
-import "github.com/spandigital/cel2sql/sqltypes"
+import "github.com/observeinc/cel2sql"
+import "github.com/observeinc/cel2sql/pg"
+import "github.com/observeinc/cel2sql/sqltypes"
 
 // NEW (v2.7.2 and later)
-import "github.com/spandigital/cel2sql/v3"
-import "github.com/spandigital/cel2sql/v3/pg"
-import "github.com/spandigital/cel2sql/v3/sqltypes"
+import "github.com/observeinc/cel2sql/v3"
+import "github.com/observeinc/cel2sql/v3/pg"
+import "github.com/observeinc/cel2sql/v3/sqltypes"
 ```
 
 ### Technical Details

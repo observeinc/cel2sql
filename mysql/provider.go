@@ -13,8 +13,8 @@ import (
 	"github.com/google/cel-go/common/types/ref"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 
-	"github.com/spandigital/cel2sql/v3/schema"
-	"github.com/spandigital/cel2sql/v3/sqltypes"
+	"github.com/observeinc/cel2sql/v3/schema"
+	"github.com/observeinc/cel2sql/v3/sqltypes"
 )
 
 // Sentinel errors for the mysql package.

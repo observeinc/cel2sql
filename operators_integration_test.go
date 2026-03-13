@@ -11,7 +11,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/spandigital/cel2sql/v3"
+	"github.com/observeinc/cel2sql/v3"
 )
 
 // TestOperatorsIntegration validates all operator conversions against real PostgreSQL

@@ -6,9 +6,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/cel-go/cel"
-	"github.com/spandigital/cel2sql/v3"
-	"github.com/spandigital/cel2sql/v3/pg"
-	"github.com/spandigital/cel2sql/v3/sqltypes"
+	"github.com/observeinc/cel2sql/v3"
+	"github.com/observeinc/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3/sqltypes"
 )
 
 // FuzzConvert fuzzes the main Convert function to find crashes, panics, and SQL injection vulnerabilities

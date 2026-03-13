@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/spandigital/cel2sql/v3/dialect"
+	"github.com/observeinc/cel2sql/v3/dialect"
 )
 
 // BigQuery index type constants.

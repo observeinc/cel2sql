@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/google/cel-go/cel"
-	"github.com/spandigital/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3/pg"
 )
 
 // TestMultiDimensionalArrays tests size() function with multi-dimensional arrays

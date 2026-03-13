@@ -19,7 +19,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/spandigital/cel2sql/v3/bigquery"
+	"github.com/observeinc/cel2sql/v3/bigquery"
 )
 
 //go:embed testdata/provider_seed.yaml

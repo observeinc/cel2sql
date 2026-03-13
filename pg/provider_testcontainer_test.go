@@ -15,8 +15,8 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/spandigital/cel2sql/v3"
-	"github.com/spandigital/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3"
+	"github.com/observeinc/cel2sql/v3/pg"
 )
 
 func TestLoadTableSchema_WithPostgresContainer(t *testing.T) {

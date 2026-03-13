@@ -5,15 +5,15 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	"github.com/spandigital/cel2sql/v3"
-	dialectpkg "github.com/spandigital/cel2sql/v3/dialect"
-	bigqueryDialect "github.com/spandigital/cel2sql/v3/dialect/bigquery"
-	duckdbDialect "github.com/spandigital/cel2sql/v3/dialect/duckdb"
-	mysqlDialect "github.com/spandigital/cel2sql/v3/dialect/mysql"
-	sqliteDialect "github.com/spandigital/cel2sql/v3/dialect/sqlite"
-	"github.com/spandigital/cel2sql/v3/pg"
-	"github.com/spandigital/cel2sql/v3/sqltypes"
-	"github.com/spandigital/cel2sql/v3/testcases"
+	"github.com/observeinc/cel2sql/v3"
+	dialectpkg "github.com/observeinc/cel2sql/v3/dialect"
+	bigqueryDialect "github.com/observeinc/cel2sql/v3/dialect/bigquery"
+	duckdbDialect "github.com/observeinc/cel2sql/v3/dialect/duckdb"
+	mysqlDialect "github.com/observeinc/cel2sql/v3/dialect/mysql"
+	sqliteDialect "github.com/observeinc/cel2sql/v3/dialect/sqlite"
+	"github.com/observeinc/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3/sqltypes"
+	"github.com/observeinc/cel2sql/v3/testcases"
 )
 
 // EnvResult holds both the CEL environment and convert options needed for testing.

@@ -17,9 +17,9 @@ import (
 	"github.com/google/cel-go/common/overloads"
 	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 
-	"github.com/spandigital/cel2sql/v3/dialect"
-	"github.com/spandigital/cel2sql/v3/dialect/postgres"
-	"github.com/spandigital/cel2sql/v3/schema"
+	"github.com/observeinc/cel2sql/v3/dialect"
+	"github.com/observeinc/cel2sql/v3/dialect/postgres"
+	"github.com/observeinc/cel2sql/v3/schema"
 )
 
 // Implementations based on `google/cel-go`'s unparser
@@ -64,7 +64,7 @@ type convertOptions struct {
 //
 // Example:
 //
-//	import "github.com/spandigital/cel2sql/v3/dialect/mysql"
+//	import "github.com/observeinc/cel2sql/v3/dialect/mysql"
 //
 //	sql, err := cel2sql.Convert(ast, cel2sql.WithDialect(mysql.New()))
 func WithDialect(d dialect.Dialect) ConvertOption {

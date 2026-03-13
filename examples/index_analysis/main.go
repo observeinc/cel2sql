@@ -6,14 +6,14 @@ import (
 	"log"
 
 	"github.com/google/cel-go/cel"
-	"github.com/spandigital/cel2sql/v3"
-	"github.com/spandigital/cel2sql/v3/dialect"
-	dialectbq "github.com/spandigital/cel2sql/v3/dialect/bigquery"
-	dialectduckdb "github.com/spandigital/cel2sql/v3/dialect/duckdb"
-	dialectmysql "github.com/spandigital/cel2sql/v3/dialect/mysql"
-	dialectpg "github.com/spandigital/cel2sql/v3/dialect/postgres"
-	dialectsqlite "github.com/spandigital/cel2sql/v3/dialect/sqlite"
-	"github.com/spandigital/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3"
+	"github.com/observeinc/cel2sql/v3/dialect"
+	dialectbq "github.com/observeinc/cel2sql/v3/dialect/bigquery"
+	dialectduckdb "github.com/observeinc/cel2sql/v3/dialect/duckdb"
+	dialectmysql "github.com/observeinc/cel2sql/v3/dialect/mysql"
+	dialectpg "github.com/observeinc/cel2sql/v3/dialect/postgres"
+	dialectsqlite "github.com/observeinc/cel2sql/v3/dialect/sqlite"
+	"github.com/observeinc/cel2sql/v3/pg"
 )
 
 func main() {

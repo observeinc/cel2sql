@@ -1,7 +1,7 @@
 // Package testcases defines shared test case types and helpers for multi-dialect testing.
 package testcases
 
-import "github.com/spandigital/cel2sql/v3/dialect"
+import "github.com/observeinc/cel2sql/v3/dialect"
 
 // Category classifies a test case for organization and selective running.
 type Category string

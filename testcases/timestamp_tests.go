@@ -1,6 +1,6 @@
 package testcases
 
-import "github.com/spandigital/cel2sql/v3/dialect"
+import "github.com/observeinc/cel2sql/v3/dialect"
 
 // TimestampTests returns test cases for timestamp and duration operations.
 func TimestampTests() []ConvertTestCase {

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
-	"github.com/spandigital/cel2sql/v3/sqlite"
+	"github.com/observeinc/cel2sql/v3/sqlite"
 )
 
 func TestNewTypeProvider(t *testing.T) {

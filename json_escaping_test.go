@@ -6,8 +6,8 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/stretchr/testify/require"
 
-	"github.com/spandigital/cel2sql/v3"
-	"github.com/spandigital/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3"
+	"github.com/observeinc/cel2sql/v3/pg"
 )
 
 // TestJSONFieldNameEscaping_SingleQuote tests that single quotes in JSON field names are properly escaped

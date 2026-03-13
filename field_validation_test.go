@@ -6,8 +6,8 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/stretchr/testify/require"
 
-	"github.com/spandigital/cel2sql/v3"
-	"github.com/spandigital/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3"
+	"github.com/observeinc/cel2sql/v3/pg"
 )
 
 // TestFieldNameValidation_Integration tests field name validation in actual CEL expression conversion

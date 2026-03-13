@@ -2,7 +2,7 @@
 package test
 
 import (
-	"github.com/spandigital/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3/pg"
 )
 
 // NewTrigramsTableSchema returns a PostgreSQL schema for the trigrams table.

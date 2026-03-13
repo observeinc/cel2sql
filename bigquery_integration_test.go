@@ -19,9 +19,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/spandigital/cel2sql/v3"
-	bigqueryDialect "github.com/spandigital/cel2sql/v3/dialect/bigquery"
-	"github.com/spandigital/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3"
+	bigqueryDialect "github.com/observeinc/cel2sql/v3/dialect/bigquery"
+	"github.com/observeinc/cel2sql/v3/pg"
 )
 
 //go:embed testdata/bigquery_seed.yaml

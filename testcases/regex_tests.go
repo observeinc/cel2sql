@@ -1,6 +1,6 @@
 package testcases
 
-import "github.com/spandigital/cel2sql/v3/dialect"
+import "github.com/observeinc/cel2sql/v3/dialect"
 
 // RegexTests returns test cases for regex pattern matching.
 func RegexTests() []ConvertTestCase {

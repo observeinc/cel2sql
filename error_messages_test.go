@@ -8,8 +8,8 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/stretchr/testify/require"
 
-	"github.com/spandigital/cel2sql/v3"
-	"github.com/spandigital/cel2sql/v3/pg"
+	"github.com/observeinc/cel2sql/v3"
+	"github.com/observeinc/cel2sql/v3/pg"
 )
 
 // TestErrorMessageSanitization tests that error messages don't leak internal schema information
