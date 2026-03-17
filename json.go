@@ -97,12 +97,26 @@ func (con *converter) isJSONTextExtraction(expr *exprpb.Expr) bool {
 	return false
 }
 
-// needsNumericCasting checks if an identifier represents a numeric iteration variable from JSON
+// needsNumericCasting checks if an identifier is an iteration variable from a
+// JSON array comprehension that requires numeric casting. Only returns true for
+// variables explicitly registered via markJSONIterVar during comprehension processing,
+// not based on variable name heuristics.
 func (con *converter) needsNumericCasting(identName string) bool {
-	// Common iteration variable names that come from numeric JSON arrays
-	numericIterationVars := []string{"score", "value", "num", "amount", "count", "level"}
+	return con.jsonIterVars != nil && con.jsonIterVars[identName]
+}
 
-	return slices.Contains(numericIterationVars, identName)
+// markJSONIterVar registers an identifier as a JSON array comprehension iteration
+// variable that needs numeric casting when used in comparisons.
+func (con *converter) markJSONIterVar(name string) {
+	if con.jsonIterVars == nil {
+		con.jsonIterVars = make(map[string]bool)
+	}
+	con.jsonIterVars[name] = true
+}
+
+// unmarkJSONIterVar removes an identifier from the JSON iteration variable set.
+func (con *converter) unmarkJSONIterVar(name string) {
+	delete(con.jsonIterVars, name)
 }
 
 // isNumericJSONField checks if a JSON field name typically contains numeric values
