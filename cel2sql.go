@@ -54,14 +54,15 @@ type ConvertOption func(*convertOptions)
 
 // convertOptions holds configuration options for the Convert function.
 type convertOptions struct {
-	schemas      map[string]schema.Schema
-	jsonVars     map[string]bool   // Variable names that are JSONB columns
-	columnAlias  map[string]string // CEL variable name → SQL column name
-	ctx          context.Context
-	logger       *slog.Logger
-	maxDepth     int             // Maximum recursion depth (0 = use default)
-	maxOutputLen int             // Maximum SQL output length (0 = use default)
-	dialect      dialect.Dialect // SQL dialect (nil = PostgreSQL default)
+	schemas        map[string]schema.Schema
+	jsonVars       map[string]bool   // Variable names that are JSONB columns
+	columnAlias    map[string]string // CEL variable name → SQL column name
+	ctx            context.Context
+	logger         *slog.Logger
+	maxDepth       int             // Maximum recursion depth (0 = use default)
+	maxOutputLen   int             // Maximum SQL output length (0 = use default)
+	dialect        dialect.Dialect // SQL dialect (nil = PostgreSQL default)
+	paramStartIndex int            // First placeholder index for ConvertParameterized (1 = $1, $2, ...; 5 = $5, $6, ...)
 }
 
 // WithDialect sets the SQL dialect for conversion.
@@ -222,6 +223,17 @@ func WithMaxOutputLength(maxLength int) ConvertOption {
 	}
 }
 
+// WithParamStartIndex sets the first placeholder index for ConvertParameterized.
+// Use this when embedding the CEL fragment into a larger parameterized query so placeholders
+// don't clash with existing parameters. Default is 1 ($1, $2, ...).
+// Example: WithParamStartIndex(5) produces $5, $6, ...; the caller appends result.Parameters
+// to their args at the corresponding positions.
+func WithParamStartIndex(index int) ConvertOption {
+	return func(o *convertOptions) {
+		o.paramStartIndex = index
+	}
+}
+
 // Result represents the output of a CEL to SQL conversion with parameterized queries.
 // It contains the SQL string with placeholders ($1, $2, etc.) and the corresponding parameter values.
 type Result struct {
@@ -346,6 +358,10 @@ func ConvertParameterized(ast *cel.Ast, opts ...ConvertOption) (*Result, error) 
 		return nil, err
 	}
 
+	paramStart := options.paramStartIndex
+	if paramStart < 1 {
+		paramStart = 1
+	}
 	un := &converter{
 		typeMap:      checkedExpr.TypeMap,
 		schemas:      options.schemas,
@@ -356,7 +372,8 @@ func ConvertParameterized(ast *cel.Ast, opts ...ConvertOption) (*Result, error) 
 		dialect:      options.dialect,
 		maxDepth:     options.maxDepth,
 		maxOutputLen: options.maxOutputLen,
-		parameterize: true, // Enable parameterization
+		parameterize:  true, // Enable parameterization
+		paramCount:   paramStart - 1, // First placeholder will be paramStart after first increment
 	}
 
 	if err := un.visit(checkedExpr.Expr); err != nil {
