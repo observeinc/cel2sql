@@ -54,15 +54,15 @@ type ConvertOption func(*convertOptions)
 
 // convertOptions holds configuration options for the Convert function.
 type convertOptions struct {
-	schemas        map[string]schema.Schema
-	jsonVars       map[string]bool   // Variable names that are JSONB columns
-	columnAlias    map[string]string // CEL variable name → SQL column name
-	ctx            context.Context
-	logger         *slog.Logger
-	maxDepth       int             // Maximum recursion depth (0 = use default)
-	maxOutputLen   int             // Maximum SQL output length (0 = use default)
-	dialect        dialect.Dialect // SQL dialect (nil = PostgreSQL default)
-	paramStartIndex int            // First placeholder index for ConvertParameterized (1 = $1, $2, ...; 5 = $5, $6, ...)
+	schemas         map[string]schema.Schema
+	jsonVars        map[string]bool   // Variable names that are JSONB columns
+	columnAlias     map[string]string // CEL variable name → SQL column name
+	ctx             context.Context
+	logger          *slog.Logger
+	maxDepth        int             // Maximum recursion depth (0 = use default)
+	maxOutputLen    int             // Maximum SQL output length (0 = use default)
+	dialect         dialect.Dialect // SQL dialect (nil = PostgreSQL default)
+	paramStartIndex int             // First placeholder index for ConvertParameterized (1 = $1, $2, ...; 5 = $5, $6, ...)
 }
 
 // WithDialect sets the SQL dialect for conversion.
@@ -120,15 +120,20 @@ func WithJSONVariables(vars ...string) ConvertOption {
 // column names differ from the user-facing CEL variable names (e.g.,
 // prefixed column names in views or tables).
 //
+// A key may be a qualified name, which maps a nested field onto a single
+// column. Declare the dotted name as a variable so the checker resolves it,
+// then alias it here like any other name.
+//
 // Example:
 //
 //	result, err := cel2sql.ConvertParameterized(ast,
 //	    cel2sql.WithColumnAliases(map[string]string{
-//	        "name":   "usr_name",
-//	        "active": "usr_active",
+//	        "name":     "tbl_name",
+//	        "active":   "tbl_active",
+//	        "owner.id": "tbl_owner_id",
 //	    }))
-//	// CEL: name == "Alice"
-//	// SQL: usr_name = $1
+//	// CEL: name == "Alice" && owner.id == 7
+//	// SQL: tbl_name = $1 AND tbl_owner_id = $2
 func WithColumnAliases(aliases map[string]string) ConvertOption {
 	return func(o *convertOptions) {
 		o.columnAlias = aliases
@@ -282,6 +287,7 @@ func Convert(ast *cel.Ast, opts ...ConvertOption) (string, error) {
 
 	un := &converter{
 		typeMap:      checkedExpr.TypeMap,
+		referenceMap: checkedExpr.ReferenceMap,
 		schemas:      options.schemas,
 		jsonVars:     options.jsonVars,
 		columnAlias:  options.columnAlias,
@@ -364,6 +370,7 @@ func ConvertParameterized(ast *cel.Ast, opts ...ConvertOption) (*Result, error) 
 	}
 	un := &converter{
 		typeMap:      checkedExpr.TypeMap,
+		referenceMap: checkedExpr.ReferenceMap,
 		schemas:      options.schemas,
 		jsonVars:     options.jsonVars,
 		columnAlias:  options.columnAlias,
@@ -372,7 +379,7 @@ func ConvertParameterized(ast *cel.Ast, opts ...ConvertOption) (*Result, error) 
 		dialect:      options.dialect,
 		maxDepth:     options.maxDepth,
 		maxOutputLen: options.maxOutputLen,
-		parameterize:  true, // Enable parameterization
+		parameterize: true,           // Enable parameterization
 		paramCount:   paramStart - 1, // First placeholder will be paramStart after first increment
 	}
 
@@ -401,14 +408,15 @@ type converter struct {
 	str                strings.Builder
 	typeMap            map[int64]*exprpb.Type
 	schemas            map[string]schema.Schema
-	jsonVars           map[string]bool   // Variable names that are JSONB columns
-	columnAlias        map[string]string // CEL variable name → SQL column name
+	jsonVars           map[string]bool             // Variable names that are JSONB columns
+	columnAlias        map[string]string           // CEL variable name → SQL column name
+	referenceMap       map[int64]*exprpb.Reference // expr id → the name the checker resolved it to
 	ctx                context.Context
 	logger             *slog.Logger
 	dialect            dialect.Dialect
-	depth              int   // Current recursion depth
-	maxDepth           int   // Maximum allowed recursion depth
-	maxOutputLen       int   // Maximum allowed SQL output length
+	depth              int             // Current recursion depth
+	maxDepth           int             // Maximum allowed recursion depth
+	maxOutputLen       int             // Maximum allowed SQL output length
 	comprehensionDepth int             // Current comprehension nesting depth
 	jsonIterVars       map[string]bool // Iteration variables from JSON array comprehensions
 	parameterize       bool            // Enable parameterized output
@@ -2336,20 +2344,27 @@ func (con *converter) visitConst(expr *exprpb.Expr) error {
 }
 
 func (con *converter) visitIdent(expr *exprpb.Expr) error {
-	identName := expr.GetIdentExpr().GetName()
+	return con.writeColumn(expr.GetIdentExpr().GetName())
+}
 
-	// Validate identifier name for security (prevent SQL injection)
-	if err := con.dialect.ValidateFieldName(identName); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidFieldName, err)
-	}
-
-	// Apply column alias if configured
+// writeColumn writes the column a resolved variable name refers to, applying its
+// alias when one is configured. A dotted name reaches here too, since the checker
+// resolves such a declaration to a variable rather than a field selection.
+func (con *converter) writeColumn(identName string) error {
+	// Apply column alias if configured.
 	sqlName := identName
 	if alias, ok := con.columnAlias[identName]; ok {
-		if err := con.dialect.ValidateFieldName(alias); err != nil {
+		sqlName = alias
+	}
+
+	// Validate what will actually be emitted (prevent SQL injection). A dot
+	// separates qualifiers rather than forming part of a name, so each segment is
+	// checked on its own; that admits a qualified reference while still rejecting
+	// anything that is not an identifier.
+	for _, segment := range strings.Split(sqlName, ".") {
+		if err := con.dialect.ValidateFieldName(segment); err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalidFieldName, err)
 		}
-		sqlName = alias
 	}
 
 	// Check if this identifier needs numeric casting for JSON comprehensions
@@ -2381,6 +2396,20 @@ func (con *converter) visitList(expr *exprpb.Expr) error {
 	return nil
 }
 
+// qualifiedName returns the name the checker resolved this expression to, when
+// it resolved it to a variable rather than a field selection. A declaration whose
+// name contains dots, such as "owner.id", parses as a selection but resolves
+// to that variable, and the reference map is where the checker records it.
+func (con *converter) qualifiedName(expr *exprpb.Expr) (string, bool) {
+	ref, ok := con.referenceMap[expr.GetId()]
+	if !ok {
+		return "", false
+	}
+	name := ref.GetName()
+	// A reference with no name is a resolved function or enum, not a variable.
+	return name, name != ""
+}
+
 func (con *converter) visitSelect(expr *exprpb.Expr) error {
 	sel := expr.GetSelectExpr()
 
@@ -2393,6 +2422,12 @@ func (con *converter) visitSelect(expr *exprpb.Expr) error {
 	// Handle the case when the select expression was generated by the has() macro.
 	if sel.GetTestOnly() {
 		return con.visitHasFunction(expr)
+	}
+
+	// A dotted declaration resolves to a variable, so it is a column reference
+	// rather than field access on a base value.
+	if name, ok := con.qualifiedName(expr); ok {
+		return con.writeColumn(name)
 	}
 
 	// Check if we should use JSON path operators
