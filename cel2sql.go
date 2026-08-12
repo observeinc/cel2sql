@@ -54,15 +54,15 @@ type ConvertOption func(*convertOptions)
 
 // convertOptions holds configuration options for the Convert function.
 type convertOptions struct {
-	schemas        map[string]schema.Schema
-	jsonVars       map[string]bool   // Variable names that are JSONB columns
-	columnAlias    map[string]string // CEL variable name → SQL column name
-	ctx            context.Context
-	logger         *slog.Logger
-	maxDepth       int             // Maximum recursion depth (0 = use default)
-	maxOutputLen   int             // Maximum SQL output length (0 = use default)
-	dialect        dialect.Dialect // SQL dialect (nil = PostgreSQL default)
-	paramStartIndex int            // First placeholder index for ConvertParameterized (1 = $1, $2, ...; 5 = $5, $6, ...)
+	schemas         map[string]schema.Schema
+	jsonVars        map[string]bool   // Variable names that are JSONB columns
+	columnAlias     map[string]string // CEL variable name → SQL column name
+	ctx             context.Context
+	logger          *slog.Logger
+	maxDepth        int             // Maximum recursion depth (0 = use default)
+	maxOutputLen    int             // Maximum SQL output length (0 = use default)
+	dialect         dialect.Dialect // SQL dialect (nil = PostgreSQL default)
+	paramStartIndex int             // First placeholder index for ConvertParameterized (1 = $1, $2, ...; 5 = $5, $6, ...)
 }
 
 // WithDialect sets the SQL dialect for conversion.
@@ -372,7 +372,7 @@ func ConvertParameterized(ast *cel.Ast, opts ...ConvertOption) (*Result, error) 
 		dialect:      options.dialect,
 		maxDepth:     options.maxDepth,
 		maxOutputLen: options.maxOutputLen,
-		parameterize:  true, // Enable parameterization
+		parameterize: true,           // Enable parameterization
 		paramCount:   paramStart - 1, // First placeholder will be paramStart after first increment
 	}
 
@@ -406,9 +406,9 @@ type converter struct {
 	ctx                context.Context
 	logger             *slog.Logger
 	dialect            dialect.Dialect
-	depth              int   // Current recursion depth
-	maxDepth           int   // Maximum allowed recursion depth
-	maxOutputLen       int   // Maximum allowed SQL output length
+	depth              int             // Current recursion depth
+	maxDepth           int             // Maximum allowed recursion depth
+	maxOutputLen       int             // Maximum allowed SQL output length
 	comprehensionDepth int             // Current comprehension nesting depth
 	jsonIterVars       map[string]bool // Iteration variables from JSON array comprehensions
 	parameterize       bool            // Enable parameterized output
