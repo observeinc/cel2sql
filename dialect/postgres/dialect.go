@@ -199,14 +199,24 @@ func (d *Dialect) WriteJSONFieldAccess(w *strings.Builder, writeBase func() erro
 	if err := writeBase(); err != nil {
 		return err
 	}
-	escapedField := escapeJSONFieldName(fieldName)
 	if isFinal {
-		w.WriteString("->>'")
+		w.WriteString("->>")
 	} else {
-		w.WriteString("->'")
+		w.WriteString("->")
 	}
-	w.WriteString(escapedField)
-	w.WriteString("'")
+	writeJSONKeyLiteral(w, fieldName)
+	return nil
+}
+
+// ValidateJSONKey implements dialect.JSONKeyValidator. WriteJSONFieldAccess names
+// the key directly in a ->>'key' operand, written by writeJSONKeyLiteral so it
+// cannot end the literal early under any server setting, so any key is accepted
+// except one holding a NUL byte: that byte would land in the query text, which
+// PostgreSQL refuses, and jsonb cannot store such a key in any case.
+func (d *Dialect) ValidateJSONKey(key string) error {
+	if strings.IndexByte(key, 0) >= 0 {
+		return fmt.Errorf("JSON object key %q holds a NUL byte", key)
+	}
 	return nil
 }
 
@@ -215,15 +225,13 @@ func (d *Dialect) WriteJSONExistence(w *strings.Builder, isJSONB bool, fieldName
 	if err := writeBase(); err != nil {
 		return err
 	}
-	escapedField := escapeJSONFieldName(fieldName)
 	if isJSONB {
-		w.WriteString(" ? '")
-		w.WriteString(escapedField)
-		w.WriteString("'")
+		w.WriteString(" ? ")
+		writeJSONKeyLiteral(w, fieldName)
 	} else {
-		w.WriteString("->'")
-		w.WriteString(escapedField)
-		w.WriteString("' IS NOT NULL")
+		w.WriteString("->")
+		writeJSONKeyLiteral(w, fieldName)
+		w.WriteString(" IS NOT NULL")
 	}
 	return nil
 }
@@ -493,4 +501,24 @@ func (d *Dialect) SupportsIndexAnalysis() bool { return true }
 // escapeJSONFieldName escapes single quotes in JSON field names for safe use in PostgreSQL JSON path operators.
 func escapeJSONFieldName(fieldName string) string {
 	return strings.ReplaceAll(fieldName, "'", "''")
+}
+
+// writeJSONKeyLiteral writes key as a string literal for a JSON operator. A key
+// without a backslash goes in as a standard literal with single quotes doubled,
+// which reads the same whatever standard_conforming_strings is set to. A key with
+// a backslash is written as an escape-string literal, E'...', with backslashes
+// doubled as well: a standard literal reads a backslash as data only while that
+// setting is on, and a role or database can turn it off, at which point the
+// backslash would escape the closing quote and the rest of the key would be read
+// as SQL. An escape string reads backslashes the same way under either setting.
+func writeJSONKeyLiteral(w *strings.Builder, key string) {
+	if !strings.Contains(key, `\`) {
+		w.WriteString("'")
+		w.WriteString(escapeJSONFieldName(key))
+		w.WriteString("'")
+		return
+	}
+	w.WriteString("E'")
+	w.WriteString(strings.ReplaceAll(escapeJSONFieldName(key), `\`, `\\`))
+	w.WriteString("'")
 }

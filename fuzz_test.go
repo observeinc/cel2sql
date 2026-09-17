@@ -7,6 +7,12 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/observeinc/cel2sql/v3"
+	"github.com/observeinc/cel2sql/v3/dialect"
+	bigqueryDialect "github.com/observeinc/cel2sql/v3/dialect/bigquery"
+	duckdbDialect "github.com/observeinc/cel2sql/v3/dialect/duckdb"
+	mysqlDialect "github.com/observeinc/cel2sql/v3/dialect/mysql"
+	postgresDialect "github.com/observeinc/cel2sql/v3/dialect/postgres"
+	sqliteDialect "github.com/observeinc/cel2sql/v3/dialect/sqlite"
 	"github.com/observeinc/cel2sql/v3/pg"
 	"github.com/observeinc/cel2sql/v3/sqltypes"
 )
@@ -47,6 +53,21 @@ func FuzzConvert(f *testing.F) {
 		`text.contains("100% discount")`,
 		`pattern == "test_underscore"`,
 		`field == "back\\slash"`,
+		// Bracket access on a flat JSON variable, where the key is data rather
+		// than an identifier. PostgreSQL renders these; the other dialects
+		// reject them, and both outcomes must hold the invariants below.
+		`meta["has space"] == "x"`,
+		`meta["k8s.pod.name"] == "x"`,
+		`meta["it's"] == "x"`,
+		`meta["say \"hi\""] == "x"`,
+		`meta["back\\slash"] == "x"`,
+		`meta["tab\there"] == "x"`,
+		`meta["nul\x00byte"] == "x"`,
+		`meta["$bar"] == "x"`,
+		`meta["/a"] == "x"`,
+		`meta["*"] == "x"`,
+		`meta[""] == "x"`,
+		`meta["a b"].contains(meta["c d"])`,
 	}
 
 	for _, seed := range seeds {
@@ -123,9 +144,18 @@ func FuzzConvert(f *testing.F) {
 		cel.Variable("a", cel.BoolType),
 		cel.Variable("b", cel.BoolType),
 		cel.Variable("c", cel.BoolType),
+		cel.Variable("meta", cel.MapType(cel.StringType, cel.StringType)),
 	)
 	if err != nil {
 		f.Fatalf("Failed to create CEL environment: %v", err)
+	}
+
+	// meta is also converted as a flat JSONB variable in every dialect, which is
+	// the path a bracket key takes with WithJSONVariables. The default Convert
+	// call below never reaches it.
+	jsonDialects := []dialect.Dialect{
+		postgresDialect.New(), mysqlDialect.New(), sqliteDialect.New(),
+		duckdbDialect.New(), bigqueryDialect.New(),
 	}
 
 	f.Fuzz(func(t *testing.T, celExpr string) {
@@ -141,29 +171,37 @@ func FuzzConvert(f *testing.F) {
 			return
 		}
 
-		// Try to convert to SQL - this should never panic or crash
-		sqlOutput, err := cel2sql.Convert(ast)
-
-		// We don't care if conversion fails with an error,
-		// but it should never panic or produce invalid output
-		if err != nil {
-			// Error is acceptable - just ensure it's a proper error, not a panic
-			return
+		// Try to convert to SQL - this should never panic or crash. An error is
+		// acceptable; invalid output is not.
+		if sqlOutput, err := cel2sql.Convert(ast); err == nil {
+			checkGeneratedSQL(t, sqlOutput)
 		}
 
-		// Basic sanity checks on generated SQL
-		if len(sqlOutput) > 0 {
-			// SQL should not contain null bytes
-			if strings.Contains(sqlOutput, "\x00") {
-				t.Errorf("Generated SQL contains null bytes: %q", sqlOutput)
+		for _, d := range jsonDialects {
+			out, err := cel2sql.Convert(ast, cel2sql.WithDialect(d), cel2sql.WithJSONVariables("meta"))
+			if err != nil {
+				continue
 			}
-
-			// SQL should be valid UTF-8
-			if !utf8.ValidString(sqlOutput) {
-				t.Errorf("Generated SQL is not valid UTF-8: %q", sqlOutput)
-			}
+			checkGeneratedSQL(t, out)
 		}
 	})
+}
+
+// checkGeneratedSQL holds the invariants every conversion must meet, whatever the
+// input: the output is text a database will accept.
+func checkGeneratedSQL(t *testing.T, sqlOutput string) {
+	t.Helper()
+	if len(sqlOutput) == 0 {
+		return
+	}
+	// SQL should not contain null bytes
+	if strings.Contains(sqlOutput, "\x00") {
+		t.Errorf("Generated SQL contains null bytes: %q", sqlOutput)
+	}
+	// SQL should be valid UTF-8
+	if !utf8.ValidString(sqlOutput) {
+		t.Errorf("Generated SQL is not valid UTF-8: %q", sqlOutput)
+	}
 }
 
 // FuzzEscapeLikePattern fuzzes the LIKE pattern escaping to find SQL injection vulnerabilities
