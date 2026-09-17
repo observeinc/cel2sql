@@ -198,7 +198,7 @@ func (d *Dialect) WriteEmptyTypedArray(w *strings.Builder, typeName string) {
 
 // WriteJSONFieldAccess writes BigQuery JSON field access using JSON_VALUE.
 func (d *Dialect) WriteJSONFieldAccess(w *strings.Builder, writeBase func() error, fieldName string, isFinal bool) error {
-	escaped := escapeJSONFieldName(fieldName)
+	path := jsonPathLiteral(fieldName)
 	if isFinal {
 		w.WriteString("JSON_VALUE(")
 	} else {
@@ -207,21 +207,21 @@ func (d *Dialect) WriteJSONFieldAccess(w *strings.Builder, writeBase func() erro
 	if err := writeBase(); err != nil {
 		return err
 	}
-	w.WriteString(", '$.")
-	w.WriteString(escaped)
+	w.WriteString(", '")
+	w.WriteString(path)
 	w.WriteString("')")
 	return nil
 }
 
 // WriteJSONExistence writes a BigQuery JSON key existence check.
 func (d *Dialect) WriteJSONExistence(w *strings.Builder, _ bool, fieldName string, writeBase func() error) error {
-	escaped := escapeJSONFieldName(fieldName)
+	path := jsonPathLiteral(fieldName)
 	w.WriteString("JSON_VALUE(")
 	if err := writeBase(); err != nil {
 		return err
 	}
-	w.WriteString(", '$.")
-	w.WriteString(escaped)
+	w.WriteString(", '")
+	w.WriteString(path)
 	w.WriteString("') IS NOT NULL")
 	return nil
 }
@@ -480,9 +480,19 @@ func (d *Dialect) SupportsIndexAnalysis() bool { return true }
 
 // --- Internal helpers ---
 
-// escapeJSONFieldName escapes special characters in JSON field names for BigQuery.
+// escapeJSONFieldName escapes a JSON field name or path for a BigQuery
+// single-quoted string literal. A backslash is an escape character there, so the
+// ones a quoted JSONPath member carries are doubled to survive as data.
 func escapeJSONFieldName(fieldName string) string {
-	return strings.ReplaceAll(fieldName, "'", "\\'")
+	fieldName = strings.ReplaceAll(fieldName, `\`, `\\`)
+	return strings.ReplaceAll(fieldName, "'", `\'`)
+}
+
+// jsonPathLiteral renders key as the body of a single-quoted BigQuery JSONPath:
+// dialect.JSONPathMember quotes the member when the key is not a bare word, and
+// the finished path is then escaped for the string literal it sits in.
+func jsonPathLiteral(key string) string {
+	return escapeJSONFieldName("$" + dialect.JSONPathMember(key))
 }
 
 // bigqueryTypeName converts a CEL/common type name to a BigQuery type name.

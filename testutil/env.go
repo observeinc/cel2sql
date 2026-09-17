@@ -140,6 +140,23 @@ func NewJSONSchemaEnv() (*EnvResult, error) {
 	}, nil
 }
 
+// NewJSONVariablesEnv creates a CEL environment with a flat JSONB variable, the
+// shape cel2sql.WithJSONVariables serves: a map-typed variable standing for a
+// JSONB column whose keys are data rather than schema.
+func NewJSONVariablesEnv() (*EnvResult, error) {
+	env, err := cel.NewEnv(
+		cel.Variable("metadata", cel.MapType(cel.StringType, cel.StringType)),
+		cel.Variable("name", cel.StringType),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &EnvResult{
+		Env:  env,
+		Opts: []cel2sql.ConvertOption{cel2sql.WithJSONVariables("metadata")},
+	}, nil
+}
+
 // PostgreSQLEnvFactory returns an environment factory for PostgreSQL tests.
 func PostgreSQLEnvFactory() func(envSetup string) (*EnvResult, error) {
 	return func(envSetup string) (*EnvResult, error) {
@@ -150,6 +167,8 @@ func PostgreSQLEnvFactory() func(envSetup string) (*EnvResult, error) {
 			return NewTimestampEnv()
 		case testcases.EnvWithJSON:
 			return NewJSONSchemaEnv()
+		case testcases.EnvWithJSONVariables:
+			return NewJSONVariablesEnv()
 		default:
 			return nil, fmt.Errorf("unknown environment setup: %s", envSetup)
 		}
@@ -178,6 +197,13 @@ func MySQLEnvFactory() func(envSetup string) (*EnvResult, error) {
 			return result, nil
 		case testcases.EnvWithJSON:
 			result, err := NewJSONSchemaEnv()
+			if err != nil {
+				return nil, err
+			}
+			result.Opts = append(result.Opts, cel2sql.WithDialect(mysqlDialect.New()))
+			return result, nil
+		case testcases.EnvWithJSONVariables:
+			result, err := NewJSONVariablesEnv()
 			if err != nil {
 				return nil, err
 			}
@@ -216,6 +242,13 @@ func SQLiteEnvFactory() func(envSetup string) (*EnvResult, error) {
 			}
 			result.Opts = append(result.Opts, cel2sql.WithDialect(sqliteDialect.New()))
 			return result, nil
+		case testcases.EnvWithJSONVariables:
+			result, err := NewJSONVariablesEnv()
+			if err != nil {
+				return nil, err
+			}
+			result.Opts = append(result.Opts, cel2sql.WithDialect(sqliteDialect.New()))
+			return result, nil
 		default:
 			return nil, fmt.Errorf("unknown environment setup: %s", envSetup)
 		}
@@ -249,6 +282,13 @@ func DuckDBEnvFactory() func(envSetup string) (*EnvResult, error) {
 			}
 			result.Opts = append(result.Opts, cel2sql.WithDialect(duckdbDialect.New()))
 			return result, nil
+		case testcases.EnvWithJSONVariables:
+			result, err := NewJSONVariablesEnv()
+			if err != nil {
+				return nil, err
+			}
+			result.Opts = append(result.Opts, cel2sql.WithDialect(duckdbDialect.New()))
+			return result, nil
 		default:
 			return nil, fmt.Errorf("unknown environment setup: %s", envSetup)
 		}
@@ -277,6 +317,13 @@ func BigQueryEnvFactory() func(envSetup string) (*EnvResult, error) {
 			return result, nil
 		case testcases.EnvWithJSON:
 			result, err := NewJSONSchemaEnv()
+			if err != nil {
+				return nil, err
+			}
+			result.Opts = append(result.Opts, cel2sql.WithDialect(bigqueryDialect.New()))
+			return result, nil
+		case testcases.EnvWithJSONVariables:
+			result, err := NewJSONVariablesEnv()
 			if err != nil {
 				return nil, err
 			}

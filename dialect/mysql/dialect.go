@@ -201,32 +201,30 @@ func (d *Dialect) WriteEmptyTypedArray(w *strings.Builder, _ string) {
 
 // WriteJSONFieldAccess writes MySQL JSON field access using JSON_EXTRACT/JSON_UNQUOTE.
 func (d *Dialect) WriteJSONFieldAccess(w *strings.Builder, writeBase func() error, fieldName string, isFinal bool) error {
+	path := jsonPathLiteral(fieldName)
 	if err := writeBase(); err != nil {
 		return err
 	}
-	escaped := escapeJSONFieldName(fieldName)
 	if isFinal {
 		// For final access, we need text: use ->> which is JSON_UNQUOTE(JSON_EXTRACT(...))
-		w.WriteString("->>'$.")
-		w.WriteString(escaped)
-		w.WriteString("'")
+		w.WriteString("->>'")
 	} else {
-		w.WriteString("->'$.")
-		w.WriteString(escaped)
-		w.WriteString("'")
+		w.WriteString("->'")
 	}
+	w.WriteString(path)
+	w.WriteString("'")
 	return nil
 }
 
 // WriteJSONExistence writes a MySQL JSON key existence check.
 func (d *Dialect) WriteJSONExistence(w *strings.Builder, _ bool, fieldName string, writeBase func() error) error {
+	path := jsonPathLiteral(fieldName)
 	w.WriteString("JSON_CONTAINS_PATH(")
 	if err := writeBase(); err != nil {
 		return err
 	}
-	escaped := escapeJSONFieldName(fieldName)
-	w.WriteString(", 'one', '$.")
-	w.WriteString(escaped)
+	w.WriteString(", 'one', '")
+	w.WriteString(path)
 	w.WriteString("')")
 	return nil
 }
@@ -469,7 +467,19 @@ func (d *Dialect) SupportsIndexAnalysis() bool { return true }
 
 // --- Internal helpers ---
 
-// escapeJSONFieldName escapes special characters in JSON field names for MySQL.
+// escapeJSONFieldName escapes a JSON field name or path for a MySQL
+// single-quoted string literal. MySQL reads a backslash in a literal as an
+// escape character unless NO_BACKSLASH_ESCAPES is set, so the ones a quoted
+// JSONPath member carries have to survive as data: double them before the
+// quotes, or `$."a\"b"` would reach the path parser as `$."a"b"`.
 func escapeJSONFieldName(fieldName string) string {
+	fieldName = strings.ReplaceAll(fieldName, `\`, `\\`)
 	return strings.ReplaceAll(fieldName, "'", "''")
+}
+
+// jsonPathLiteral renders key as the body of a single-quoted MySQL JSONPath:
+// dialect.JSONPathMember quotes the member when the key is not a bare word, and
+// the finished path is then escaped for the string literal it sits in.
+func jsonPathLiteral(key string) string {
+	return escapeJSONFieldName("$" + dialect.JSONPathMember(key))
 }

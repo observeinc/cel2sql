@@ -215,13 +215,13 @@ func (d *Dialect) WriteJSONFieldAccess(w *strings.Builder, writeBase func() erro
 
 // WriteJSONExistence writes a DuckDB JSON key existence check using json_exists.
 func (d *Dialect) WriteJSONExistence(w *strings.Builder, _ bool, fieldName string, writeBase func() error) error {
+	path := jsonPathLiteral(fieldName)
 	w.WriteString("json_exists(")
 	if err := writeBase(); err != nil {
 		return err
 	}
-	escaped := escapeJSONFieldName(fieldName)
-	w.WriteString(", '$.")
-	w.WriteString(escaped)
+	w.WriteString(", '")
+	w.WriteString(path)
 	w.WriteString("')")
 	return nil
 }
@@ -470,4 +470,11 @@ func (d *Dialect) SupportsIndexAnalysis() bool { return true }
 // escapeJSONFieldName escapes special characters in JSON field names for DuckDB.
 func escapeJSONFieldName(fieldName string) string {
 	return strings.ReplaceAll(fieldName, "'", "''")
+}
+
+// jsonPathLiteral renders key as the body of a single-quoted DuckDB JSONPath:
+// dialect.JSONPathMember quotes the member when the key is not a bare word, and
+// the finished path is then escaped for the string literal it sits in.
+func jsonPathLiteral(key string) string {
+	return escapeJSONFieldName("$" + dialect.JSONPathMember(key))
 }

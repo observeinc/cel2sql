@@ -1960,15 +1960,27 @@ func (con *converter) visitCallMapIndex(expr *exprpb.Expr) error {
 		return fmt.Errorf("%w: map index operator requires map and key arguments", ErrInvalidArguments)
 	}
 	m := args[0]
+
+	// Indexing a JSONB variable extracts an object member, so the key is data and
+	// keeps whatever shape the document gave it; the dialect quotes and escapes
+	// it. Indexing anything else lowers to <operand>.<field>, where the key names
+	// a column and so has to be a valid identifier.
+	if identExpr := m.GetIdentExpr(); identExpr != nil && con.isJSONVariable(identExpr.GetName()) {
+		key, err := extractJSONKey(args[1])
+		if err != nil {
+			return err
+		}
+		// The operand goes in through the callback, not ahead of the call: a
+		// dialect whose JSON access is a function call (SQLite's json_extract,
+		// BigQuery's JSON_VALUE) writes its opening text first and expects to
+		// place the operand itself, so writing it here would land it outside the
+		// call. Dot access already funnels the operand through the same callback.
+		return con.dialect.WriteJSONFieldAccess(&con.str, func() error { return con.visit(m) }, key, true)
+	}
+
 	fieldName, err := extractFieldName(args[1])
 	if err != nil {
 		return err
-	}
-	if identExpr := m.GetIdentExpr(); identExpr != nil && con.isJSONVariable(identExpr.GetName()) {
-		if err := con.visit(m); err != nil {
-			return err
-		}
-		return con.dialect.WriteJSONFieldAccess(&con.str, func() error { return nil }, fieldName, true)
 	}
 	nested := isBinaryOrTernaryOperator(m)
 	if err := con.visitMaybeNested(m, nested); err != nil {

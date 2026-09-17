@@ -188,26 +188,26 @@ func (d *Dialect) WriteEmptyTypedArray(w *strings.Builder, _ string) {
 
 // WriteJSONFieldAccess writes SQLite JSON field access using json_extract.
 func (d *Dialect) WriteJSONFieldAccess(w *strings.Builder, writeBase func() error, fieldName string, _ bool) error {
+	path := jsonPathLiteral(fieldName)
 	w.WriteString("json_extract(")
 	if err := writeBase(); err != nil {
 		return err
 	}
-	escaped := escapeJSONFieldName(fieldName)
-	w.WriteString(", '$.")
-	w.WriteString(escaped)
+	w.WriteString(", '")
+	w.WriteString(path)
 	w.WriteString("')")
 	return nil
 }
 
 // WriteJSONExistence writes a SQLite JSON key existence check.
 func (d *Dialect) WriteJSONExistence(w *strings.Builder, _ bool, fieldName string, writeBase func() error) error {
+	path := jsonPathLiteral(fieldName)
 	w.WriteString("json_type(")
 	if err := writeBase(); err != nil {
 		return err
 	}
-	escaped := escapeJSONFieldName(fieldName)
-	w.WriteString(", '$.")
-	w.WriteString(escaped)
+	w.WriteString(", '")
+	w.WriteString(path)
 	w.WriteString("') IS NOT NULL")
 	return nil
 }
@@ -433,6 +433,13 @@ func (d *Dialect) SupportsIndexAnalysis() bool { return true }
 // escapeJSONFieldName escapes special characters in JSON field names for SQLite.
 func escapeJSONFieldName(fieldName string) string {
 	return strings.ReplaceAll(fieldName, "'", "''")
+}
+
+// jsonPathLiteral renders key as the body of a single-quoted SQLite JSONPath:
+// dialect.JSONPathMember quotes the member when the key is not a bare word, and
+// the finished path is then escaped for the string literal it sits in.
+func jsonPathLiteral(key string) string {
+	return escapeJSONFieldName("$" + dialect.JSONPathMember(key))
 }
 
 // sqliteExtractFormat maps SQL EXTRACT parts to SQLite strftime format strings.

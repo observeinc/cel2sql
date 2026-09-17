@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Arbitrary JSON object keys in map-index access**
+  - `jsonVar["has space"]`, `jsonVar["pod-name"]`, `jsonVar["k8s.pod.name"]` and `jsonVar["select"]` now convert. A JSON key is data addressed through a quoted operand, not a column name, so identifier rules no longer apply to it; `extractFieldName` still governs the map-index branch that lowers to `<operand>.<field>`, where the key does name a column.
+  - Dialects whose JSON access embeds a JSONPath (MySQL, SQLite, DuckDB's existence check, BigQuery) quote the member when the key is not a bare word, via the new `dialect.JSONPathMember`. Without it `'$.k8s.pod.name'` would read three nested objects instead of one flat key. A quoted member is a JSON string, so a key holding a double quote, a backslash or a control character is escaped the way JSON escapes it, and MySQL and BigQuery then double those backslashes again for their own string literals. No key is refused: MySQL 8.0, SQLite 3.51 and PostgreSQL 17 all resolve such keys back in the integration tests.
+  - Bracket access on a variable declared with `WithJSONVariables` produced malformed SQL on dialects whose JSON access is a function call: `metadatajson_extract(, '$.brand')` for SQLite, likewise for BigQuery. The operand now goes through the same callback dot access uses.
+
 ### Added
 - **Multi-Dialect SQL Support**
   - Introduced `Dialect` interface for pluggable SQL generation (`dialect/dialect.go`)

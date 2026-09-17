@@ -14,6 +14,11 @@ const EnvWithSchema = "schema"
 // EnvWithJSON is an environment with JSON/JSONB schema fields.
 const EnvWithJSON = "json_schema"
 
+// EnvWithJSONVariables is an environment whose "metadata" variable is a flat
+// JSONB column declared through cel2sql.WithJSONVariables, rather than a field of
+// a schema-described table.
+const EnvWithJSONVariables = "json_variables"
+
 // EnvWithTimestamp is an environment for timestamp operations.
 const EnvWithTimestamp = "timestamp"
 
