@@ -3,6 +3,7 @@
 package cel2sql_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/cel-go/cel"
@@ -11,6 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/observeinc/cel2sql/v3"
+	dialectpkg "github.com/observeinc/cel2sql/v3/dialect"
+	bigqueryDialect "github.com/observeinc/cel2sql/v3/dialect/bigquery"
+	duckdbDialect "github.com/observeinc/cel2sql/v3/dialect/duckdb"
+	mysqlDialect "github.com/observeinc/cel2sql/v3/dialect/mysql"
+	postgresDialect "github.com/observeinc/cel2sql/v3/dialect/postgres"
+	sqliteDialect "github.com/observeinc/cel2sql/v3/dialect/sqlite"
 )
 
 func TestWithJSONVariables_DotNotation(t *testing.T) {
@@ -126,6 +133,187 @@ func TestWithJSONVariables_BracketNotation(t *testing.T) {
 			if tt.wantArgs != nil {
 				assert.Equal(t, tt.wantArgs, result.Parameters)
 			}
+		})
+	}
+}
+
+// TestWithJSONVariables_NonIdentifierKeys covers keys that are not SQL
+// identifiers. A JSON object key is data, and bracket notation is the only way to
+// name one holding a space, a hyphen or a dot, so these have to convert: the key
+// reaches SQL as a quoted operand, never as a bare column name.
+func TestWithJSONVariables_NonIdentifierKeys(t *testing.T) {
+	env, err := cel.NewEnv(
+		cel.CustomTypeAdapter(types.DefaultTypeAdapter),
+		cel.Variable("metadata", cel.MapType(cel.StringType, cel.StringType)),
+	)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name     string
+		expr     string
+		wantSQL  string
+		wantArgs []any
+	}{
+		{
+			name:     "space",
+			expr:     `metadata["has space"] == "value"`,
+			wantSQL:  `metadata->>'has space' = $1`,
+			wantArgs: []any{"value"},
+		},
+		{
+			name:     "hyphen",
+			expr:     `metadata["pod-name"] == "web-1"`,
+			wantSQL:  `metadata->>'pod-name' = $1`,
+			wantArgs: []any{"web-1"},
+		},
+		{
+			name:     "dotted key is one key, not a nested path",
+			expr:     `metadata["k8s.pod.name"] == "web-1"`,
+			wantSQL:  `metadata->>'k8s.pod.name' = $1`,
+			wantArgs: []any{"web-1"},
+		},
+		{
+			name:     "leading digit",
+			expr:     `metadata["2fa"] == "on"`,
+			wantSQL:  `metadata->>'2fa' = $1`,
+			wantArgs: []any{"on"},
+		},
+		{
+			name:     "reserved SQL keyword",
+			expr:     `metadata["select"] == "all"`,
+			wantSQL:  `metadata->>'select' = $1`,
+			wantArgs: []any{"all"},
+		},
+		{
+			name:     "quote in key is escaped, not injected",
+			expr:     `metadata["it's"] == "value"`,
+			wantSQL:  `metadata->>'it''s' = $1`,
+			wantArgs: []any{"value"},
+		},
+		{
+			name:     "key longer than a PostgreSQL identifier",
+			expr:     `metadata["` + strings.Repeat("k", 80) + `"] == "value"`,
+			wantSQL:  `metadata->>'` + strings.Repeat("k", 80) + `' = $1`,
+			wantArgs: []any{"value"},
+		},
+		{
+			name:     "contains on a spaced key",
+			expr:     `metadata["has space"].contains("alu")`,
+			wantSQL:  `POSITION($1 IN metadata->>'has space') > 0`,
+			wantArgs: []any{"alu"},
+		},
+		{
+			name:     "double quote in key is JSON-escaped in the operand",
+			expr:     `metadata["say \"hi\""] == "value"`,
+			wantSQL:  `metadata->>'say "hi"' = $1`,
+			wantArgs: []any{"value"},
+		},
+		{
+			// PostgreSQL names the key directly rather than through a path, so a
+			// backslash needs no escaping: its literals treat one as data.
+			name:     "backslash in key",
+			expr:     `metadata["back\\slash"] == "value"`,
+			wantSQL:  `metadata->>'back\slash' = $1`,
+			wantArgs: []any{"value"},
+		},
+		{
+			name:     "two spaced keys compared to each other",
+			expr:     `metadata["a b"] == metadata["c d"]`,
+			wantSQL:  `metadata->>'a b' = metadata->>'c d'`,
+			wantArgs: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ast, issues := env.Compile(tt.expr)
+			require.NoError(t, issues.Err())
+
+			result, err := cel2sql.ConvertParameterized(ast, cel2sql.WithJSONVariables("metadata"))
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantSQL, result.SQL)
+			if tt.wantArgs != nil {
+				assert.Equal(t, tt.wantArgs, result.Parameters)
+			}
+		})
+	}
+}
+
+// TestWithJSONVariables_IdentifierRulesStillApplyToColumns pins the other half of
+// the map-index branch: indexing something that is not a declared JSONB variable
+// lowers to <operand>.<field>, where the key does name a column and so still has
+// to be an identifier.
+func TestWithJSONVariables_IdentifierRulesStillApplyToColumns(t *testing.T) {
+	env, err := cel.NewEnv(
+		cel.CustomTypeAdapter(types.DefaultTypeAdapter),
+		cel.Variable("metadata", cel.MapType(cel.StringType, cel.StringType)),
+	)
+	require.NoError(t, err)
+
+	ast, issues := env.Compile(`metadata["has space"] == "value"`)
+	require.NoError(t, issues.Err())
+
+	// metadata is not declared as a JSONB variable here, so the key would be
+	// emitted unquoted as metadata.<key>.
+	_, err = cel2sql.ConvertParameterized(ast)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid field name")
+}
+
+// TestWithJSONVariables_ComputedKeyRejected keeps the string-literal requirement:
+// only a constant key can be rendered into the JSON operand.
+func TestWithJSONVariables_ComputedKeyRejected(t *testing.T) {
+	env, err := cel.NewEnv(
+		cel.CustomTypeAdapter(types.DefaultTypeAdapter),
+		cel.Variable("metadata", cel.MapType(cel.StringType, cel.StringType)),
+		cel.Variable("wanted", cel.StringType),
+	)
+	require.NoError(t, err)
+
+	ast, issues := env.Compile(`metadata[wanted] == "value"`)
+	require.NoError(t, issues.Err())
+
+	_, err = cel2sql.ConvertParameterized(ast, cel2sql.WithJSONVariables("metadata"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expected string literal")
+}
+
+// TestWithJSONVariables_KeyRulesPerDialect pins the contract behind
+// dialect.JSONKeyValidator. PostgreSQL opts in and renders any key except one
+// holding a NUL byte; every other dialect has not been made safe for arbitrary
+// keys and keeps the identifier rule it applied before, so a non-identifier key
+// still fails conversion there rather than producing SQL nobody has verified.
+func TestWithJSONVariables_KeyRulesPerDialect(t *testing.T) {
+	env, err := cel.NewEnv(
+		cel.CustomTypeAdapter(types.DefaultTypeAdapter),
+		cel.Variable("metadata", cel.MapType(cel.StringType, cel.StringType)),
+	)
+	require.NoError(t, err)
+
+	convert := func(t *testing.T, expr string, d dialectpkg.Dialect) error {
+		t.Helper()
+		ast, issues := env.Compile(expr)
+		require.NoError(t, issues.Err())
+		_, err := cel2sql.ConvertParameterized(ast, cel2sql.WithJSONVariables("metadata"), cel2sql.WithDialect(d))
+		return err
+	}
+
+	const spacedKey = `metadata["has space"] == "value"`
+	const nulKey = `metadata["nul\x00byte"] == "value"`
+
+	t.Run("postgresql accepts a non-identifier key", func(t *testing.T) {
+		require.NoError(t, convert(t, spacedKey, postgresDialect.New()))
+	})
+
+	t.Run("postgresql still refuses a NUL byte", func(t *testing.T) {
+		require.ErrorIs(t, convert(t, nulKey, postgresDialect.New()), cel2sql.ErrInvalidFieldName)
+	})
+
+	for _, d := range []dialectpkg.Dialect{mysqlDialect.New(), sqliteDialect.New(), duckdbDialect.New(), bigqueryDialect.New()} {
+		t.Run(string(d.Name())+" keeps the identifier rule", func(t *testing.T) {
+			require.ErrorIs(t, convert(t, spacedKey, d), cel2sql.ErrInvalidFieldName)
+			require.ErrorIs(t, convert(t, nulKey, d), cel2sql.ErrInvalidFieldName)
 		})
 	}
 }

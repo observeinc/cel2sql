@@ -210,6 +210,18 @@ func (d *Dialect) WriteJSONFieldAccess(w *strings.Builder, writeBase func() erro
 	return nil
 }
 
+// ValidateJSONKey implements dialect.JSONKeyValidator. WriteJSONFieldAccess names
+// the key directly in a ->>'key' operand, where doubling single quotes is the only
+// escaping a standard-conforming string literal needs, so any key is accepted
+// except one holding a NUL byte: that byte would land in the query text, which
+// PostgreSQL refuses, and jsonb cannot store such a key in any case.
+func (d *Dialect) ValidateJSONKey(key string) error {
+	if strings.IndexByte(key, 0) >= 0 {
+		return fmt.Errorf("JSON object key %q holds a NUL byte", key)
+	}
+	return nil
+}
+
 // WriteJSONExistence writes a PostgreSQL JSON key existence check (? or IS NOT NULL).
 func (d *Dialect) WriteJSONExistence(w *strings.Builder, isJSONB bool, fieldName string, writeBase func() error) error {
 	if err := writeBase(); err != nil {

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Non-identifier JSON keys in bracket access (PostgreSQL)**
+  - With the PostgreSQL dialect, bracket access on a `WithJSONVariables` variable now accepts any key: `meta["has space"]`, `meta["pod-name"]`, `meta["k8s.pod.name"]`, `meta["select"]`, keys holding quotes or backslashes, and the empty key. A JSON key is data, not a column name, and PostgreSQL names it directly in a `->>'key'` operand where doubling single quotes is all the escaping needed. Previously every such key failed conversion with `ErrInvalidFieldName`. A key holding a NUL byte is still rejected, since it would land in the query text and jsonb cannot store one.
+  - **Other dialects are unchanged.** MySQL, SQLite, DuckDB and BigQuery still require a bracket key to be a valid SQL identifier. Each embeds the key in a JSON path with its own quoting rules, and accepting arbitrary keys there needs per-dialect rendering that has not been built or verified. A dialect opts in by implementing the new `dialect.JSONKeyValidator` interface.
+  - Verified against PostgreSQL 17 with a document that also holds a nested `k8s.pod.name` object, so a key read as a nested path fails the test.
+
+### Changed
+- `FuzzConvert` also converts a flat JSON variable through `WithJSONVariables` in all five dialects, seeded with non-identifier keys. Previously it declared no map-typed variable, so it never reached bracket-key conversion.
+
 ### Added
 - **Multi-Dialect SQL Support**
   - Introduced `Dialect` interface for pluggable SQL generation (`dialect/dialect.go`)

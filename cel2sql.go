@@ -97,6 +97,14 @@ func WithSchemas(schemas map[string]schema.Schema) ConvertOption {
 // and bracket notation (context["host"]) will produce PostgreSQL JSONB operators
 // (e.g., context->>'host') instead of plain dot notation (context.host).
 //
+// Bracket notation is the only way to name a key that is not a CEL identifier,
+// such as context["k8s.pod.name"] or context["has space"]. With the PostgreSQL
+// dialect any such key is accepted, except one holding a NUL byte. The other
+// dialects still require the key to be a valid SQL identifier, as for a column,
+// and reject anything else with ErrInvalidFieldName: each embeds the key in a JSON
+// path with its own quoting rules, and that rendering has not been built or
+// verified for them. See dialect.JSONKeyValidator.
+//
 // Example:
 //
 //	result, err := cel2sql.ConvertParameterized(ast,
@@ -1960,15 +1968,19 @@ func (con *converter) visitCallMapIndex(expr *exprpb.Expr) error {
 		return fmt.Errorf("%w: map index operator requires map and key arguments", ErrInvalidArguments)
 	}
 	m := args[0]
-	fieldName, err := extractFieldName(args[1])
-	if err != nil {
-		return err
-	}
 	if identExpr := m.GetIdentExpr(); identExpr != nil && con.isJSONVariable(identExpr.GetName()) {
+		key, err := con.extractJSONVariableKey(args[1])
+		if err != nil {
+			return err
+		}
 		if err := con.visit(m); err != nil {
 			return err
 		}
-		return con.dialect.WriteJSONFieldAccess(&con.str, func() error { return nil }, fieldName, true)
+		return con.dialect.WriteJSONFieldAccess(&con.str, func() error { return nil }, key, true)
+	}
+	fieldName, err := extractFieldName(args[1])
+	if err != nil {
+		return err
 	}
 	nested := isBinaryOrTernaryOperator(m)
 	if err := con.visitMaybeNested(m, nested); err != nil {
@@ -1977,6 +1989,27 @@ func (con *converter) visitCallMapIndex(expr *exprpb.Expr) error {
 	con.str.WriteString(".")
 	con.str.WriteString(fieldName)
 	return nil
+}
+
+// extractJSONVariableKey returns the key of a bracket access on a JSONB variable.
+// The key is data, so a dialect that can render any key (dialect.JSONKeyValidator)
+// decides what it accepts; every other dialect keeps the identifier rule that
+// applies to a column, because it has not been made safe for anything wider.
+func (con *converter) extractJSONVariableKey(node *exprpb.Expr) (string, error) {
+	key, err := extractJSONKey(node)
+	if err != nil {
+		return "", err
+	}
+	if v, ok := dialect.GetJSONKeyValidator(con.dialect); ok {
+		if err := v.ValidateJSONKey(key); err != nil {
+			return "", fmt.Errorf("%w: %w", ErrInvalidFieldName, err)
+		}
+		return key, nil
+	}
+	if err := validateFieldName(key); err != nil {
+		return "", err
+	}
+	return key, nil
 }
 
 func (con *converter) visitCallListIndex(expr *exprpb.Expr) error {

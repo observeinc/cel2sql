@@ -135,16 +135,36 @@ func validateFieldName(name string) error {
 	return nil
 }
 
-// extractFieldName extracts a field name from a string literal expression
+// extractFieldName extracts a field name from a string literal expression, and
+// validates it as an identifier because the caller emits it unquoted.
 func extractFieldName(node *exprpb.Expr) (string, error) {
-	if !isStringLiteral(node) {
-		return "", fmt.Errorf("%w: expected string literal for field name, got %T", ErrInvalidFieldName, node.ExprKind)
+	fieldName, err := extractStringLiteral(node, "field name")
+	if err != nil {
+		return "", err
 	}
-	fieldName := node.GetConstExpr().GetStringValue()
 	if err := validateFieldName(fieldName); err != nil {
 		return "", err
 	}
 	return fieldName, nil
+}
+
+// extractJSONKey extracts a JSON object key from a string literal expression.
+//
+// Unlike extractFieldName it applies no identifier rules of its own: a JSON key
+// is data, so "pod-name", "k8s.pod.name" and "has space" are all ordinary keys.
+// Whether the target dialect can render a given key is decided by the caller;
+// see converter.extractJSONVariableKey.
+func extractJSONKey(node *exprpb.Expr) (string, error) {
+	return extractStringLiteral(node, "JSON object key")
+}
+
+// extractStringLiteral returns the value of a string constant expression. role
+// names what the literal stands for, so a rejection says which kind it was.
+func extractStringLiteral(node *exprpb.Expr, role string) (string, error) {
+	if !isStringLiteral(node) {
+		return "", fmt.Errorf("%w: expected string literal for %s, got %T", ErrInvalidFieldName, role, node.ExprKind)
+	}
+	return node.GetConstExpr().GetStringValue(), nil
 }
 
 // Numeric comparison utilities
