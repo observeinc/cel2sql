@@ -75,8 +75,12 @@ jobs:
         tool: 'go'
         output-file-path: benchmark-results.txt
         github-token: ${{ secrets.GITHUB_TOKEN }}
-        auto-push: true
-        comment-on-alert: true
+        # Only a push to main records a result or comments on an alert. A pull
+        # request still runs and summarises the benchmarks, but it neither writes
+        # into the gh-pages history, where it would become the next baseline, nor
+        # tries to post a PR comment, which this job's token is not allowed to do.
+        auto-push: ${{ github.event_name == 'push' }}
+        comment-on-alert: ${{ github.event_name == 'push' }}
         alert-threshold: '150%'
         fail-on-alert: false
         summary-always: true
