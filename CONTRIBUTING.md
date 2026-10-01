@@ -6,7 +6,7 @@ Thank you for your interest in contributing to cel2sql! This document provides g
 
 ### Prerequisites
 
-- Go 1.24 or later
+- Go 1.26 or later
 - Git
 - Make (optional, but recommended)
 
