@@ -49,7 +49,7 @@ jobs:
           check-latest: true
 
       - name: Install OSV Scanner
-        run: go install github.com/google/osv-scanner/cmd/osv-scanner@latest
+        run: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.5.1
 
       - name: Run OSV Scanner
         run: $(go env GOPATH)/bin/osv-scanner scan -r .
