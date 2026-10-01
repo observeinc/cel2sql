@@ -5,7 +5,7 @@
 
 Convert [CEL (Common Expression Language)](https://cel.dev/) expressions to SQL for PostgreSQL, MySQL, SQLite, DuckDB, and BigQuery
 
-[![Go Version](https://img.shields.io/badge/Go-1.24%2B-blue)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.26%2B-blue)](https://golang.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791)](https://www.postgresql.org)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1)](https://www.mysql.com)
 [![SQLite](https://img.shields.io/badge/SQLite-3-003B57)](https://www.sqlite.org)
@@ -613,7 +613,7 @@ See [Getting Started Guide](docs/getting-started.md) for more details.
 
 ## Requirements
 
-- Go 1.24 or higher
+- Go 1.26 or higher
 
 ### CGO Requirement (DuckDB only)
 

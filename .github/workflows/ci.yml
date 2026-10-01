@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.25.x']  # Go 1.25.7+ required
+        go-version: ['1.26.x']  # Go 1.26+ required
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -40,7 +40,7 @@ jobs:
       run: go test -race -coverprofile=coverage.out -covermode=atomic -v ./...
 
     - name: Upload coverage to Codecov
-      if: matrix.go-version == '1.25.x'  # Only upload once
+      if: matrix.go-version == '1.26.x'  # Only upload once
       uses: codecov/codecov-action@v4
       with:
         file: ./coverage.out
@@ -59,7 +59,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25.x'
+        go-version: '1.26.x'
         cache: true
         check-latest: true
 
@@ -75,8 +75,12 @@ jobs:
         tool: 'go'
         output-file-path: benchmark-results.txt
         github-token: ${{ secrets.GITHUB_TOKEN }}
-        auto-push: true
-        comment-on-alert: true
+        # Only a push to main records a result or comments on an alert. A pull
+        # request still runs and summarises the benchmarks, but it neither writes
+        # into the gh-pages history, where it would become the next baseline, nor
+        # tries to post a PR comment, which this job's token is not allowed to do.
+        auto-push: ${{ github.event_name == 'push' }}
+        comment-on-alert: ${{ github.event_name == 'push' }}
         alert-threshold: '150%'
         fail-on-alert: false
         summary-always: true

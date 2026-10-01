@@ -29,7 +29,7 @@ This project converts [CEL (Common Expression Language)](https://opensource.goog
 
 ### Code Style
 
-- Use Go 1.24+ features
+- Use Go 1.26+ features
 - Follow standard Go naming conventions
 - Prefer explicit error handling over panics
 - Use context.Context for database operations

@@ -1,6 +1,7 @@
 // Modified by Observe, Inc. (2026): Added isJSONVariable and flat ident check
 // in shouldUseJSONPath for WithJSONVariables support.
 // Original source: github.com/SPANDigital/cel2sql
+
 package cel2sql
 
 import (
@@ -97,26 +98,13 @@ func (con *converter) isJSONTextExtraction(expr *exprpb.Expr) bool {
 	return false
 }
 
-// needsNumericCasting checks if an identifier is an iteration variable from a
-// JSON array comprehension that requires numeric casting. Only returns true for
-// variables explicitly registered via markJSONIterVar during comprehension processing,
-// not based on variable name heuristics.
+// needsNumericCasting reports whether an identifier is a JSON array comprehension
+// iteration variable that needs numeric casting, which is decided by membership in
+// jsonIterVars rather than by variable-name heuristics. Nothing registers
+// variables there yet, so this always reports false: comprehension processing
+// was never wired to record its iteration variables.
 func (con *converter) needsNumericCasting(identName string) bool {
 	return con.jsonIterVars != nil && con.jsonIterVars[identName]
-}
-
-// markJSONIterVar registers an identifier as a JSON array comprehension iteration
-// variable that needs numeric casting when used in comparisons.
-func (con *converter) markJSONIterVar(name string) {
-	if con.jsonIterVars == nil {
-		con.jsonIterVars = make(map[string]bool)
-	}
-	con.jsonIterVars[name] = true
-}
-
-// unmarkJSONIterVar removes an identifier from the JSON iteration variable set.
-func (con *converter) unmarkJSONIterVar(name string) {
-	delete(con.jsonIterVars, name)
 }
 
 // isNumericJSONField checks if a JSON field name typically contains numeric values
