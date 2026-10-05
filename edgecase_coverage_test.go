@@ -329,7 +329,7 @@ func TestBinaryOperatorEdgeCases(t *testing.T) {
 		{
 			name:        "in_operator_with_list",
 			expression:  `data.name in ["admin", "user"]`,
-			expectedSQL: `data.name = ANY(ARRAY['admin', 'user'])`,
+			expectedSQL: `data.name IN ('admin', 'user')`,
 			description: "IN operator with list literal",
 		},
 		{

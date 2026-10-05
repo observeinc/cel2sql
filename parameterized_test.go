@@ -195,14 +195,14 @@ func TestConvertParameterized(t *testing.T) {
 		{
 			name:           "IN with array literal",
 			celExpr:        `age in [18, 21, 25]`,
-			wantSQL:        "age = ANY(ARRAY[$1, $2, $3])",
+			wantSQL:        "age IN ($1, $2, $3)",
 			wantParamCount: 3,
 			wantParams:     []any{int64(18), int64(21), int64(25)},
 		},
 		{
 			name:           "string IN with array literal",
 			celExpr:        `name in ["John", "Jane", "Bob"]`,
-			wantSQL:        "name = ANY(ARRAY[$1, $2, $3])",
+			wantSQL:        "name IN ($1, $2, $3)",
 			wantParamCount: 3,
 			wantParams:     []any{"John", "Jane", "Bob"},
 		},
@@ -599,6 +599,64 @@ func TestConvertParameterized_ParameterTypeConsistency(t *testing.T) {
 			actualType := assert.ObjectsAreEqualValues(param, result.Parameters[tt.paramIndex])
 			t.Logf("Parameter type: %T (value: %v)", param, param)
 			assert.NotNil(t, actualType, "Parameter should have correct type")
+		})
+	}
+}
+
+// TestConvertParameterized_ListLiteralMembership pins the value-list form of
+// x in [list literal]: placeholder numbering from WithParamStartIndex in source
+// order, and parentheses around a call on the left, since IN binds tighter than
+// the = and LIKE that comparisons and startsWith produce.
+func TestConvertParameterized_ListLiteralMembership(t *testing.T) {
+	env, err := cel.NewEnv(
+		cel.Variable("id", cel.IntType),
+		cel.Variable("name", cel.StringType),
+		cel.Variable("ratio", cel.DoubleType),
+		cel.Variable("b", cel.BoolType),
+	)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name       string
+		expr       string
+		opts       []cel2sql.ConvertOption
+		wantSQL    string
+		wantParams []any
+	}{
+		{
+			name:       "numbering continues from the start index",
+			expr:       `name == "x" && id in [1, 2] && ratio > 0.1 && "y" in [name, "z"]`,
+			opts:       []cel2sql.ConvertOption{cel2sql.WithParamStartIndex(3)},
+			wantSQL:    "name = $3 AND id IN ($4, $5) AND ratio > $6 AND $7 IN (name, $8)",
+			wantParams: []any{"x", int64(1), int64(2), 0.1, "y", "z"},
+		},
+		{
+			name:       "comparison on the left",
+			expr:       `(id == 1) in [true, false]`,
+			wantSQL:    "(id = $1) IN (TRUE, FALSE)",
+			wantParams: []any{int64(1)},
+		},
+		{
+			name:       "startsWith on the left",
+			expr:       `name.startsWith("a") in [true]`,
+			wantSQL:    `(name LIKE 'a%' ESCAPE E'\\') IN (TRUE)`,
+			wantParams: nil,
+		},
+		{
+			name:       "plain column on the left is not wrapped",
+			expr:       `id in [1]`,
+			wantSQL:    "id IN ($1)",
+			wantParams: []any{int64(1)},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ast, issues := env.Compile(tt.expr)
+			require.NoError(t, issues.Err())
+			res, err := cel2sql.ConvertParameterized(ast, tt.opts...)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantSQL, res.SQL)
+			assert.Equal(t, tt.wantParams, res.Parameters)
 		})
 	}
 }
