@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Fixed
+- **Membership in a list literal on non-text columns (PostgreSQL)**
+  - With the PostgreSQL dialect, `x in [a, b]` is now written `x IN (a, b)` instead of `x = ANY(ARRAY[a, b])`. PostgreSQL types the elements of an ARRAY constructor with no reference to `x`, so an untyped placeholder or quoted literal resolved as text: `bigint_col in [1, 2]` failed under `ConvertParameterized` with "operator does not exist: bigint = text", and `uuid_col in ["…", "…"]` failed the same way in both modes. In a value list each element is resolved against `x`, and NULL semantics match `= ANY`. Parameters stay one per element, so no driver needs to encode a slice.
+  - Only a non-empty list literal changes. Membership in an array column, a JSON array or an empty list is written as before. Other dialects are unchanged; a dialect opts in by implementing `dialect.ListLiteralMembershipWriter`.
+  - Verified against PostgreSQL 17 for bigint, uuid and double columns, parameterized and inline.
 - **Non-identifier JSON keys in bracket access (PostgreSQL)**
   - With the PostgreSQL dialect, bracket access on a `WithJSONVariables` variable now accepts any key: `meta["has space"]`, `meta["pod-name"]`, `meta["k8s.pod.name"]`, `meta["select"]`, keys holding quotes or backslashes, and the empty key. A JSON key is data, not a column name, and PostgreSQL names it directly in a `->>'key'` operand. A key holding a backslash is written as an escape string, `E'...'`, with backslashes doubled, so it cannot end its literal early even where a role or database has turned `standard_conforming_strings` off. Previously every such key failed conversion with `ErrInvalidFieldName`. A key holding a NUL byte is still rejected, since it would land in the query text and jsonb cannot store one.
   - **Other dialects are unchanged.** MySQL, SQLite, DuckDB and BigQuery still require a bracket key to be a valid SQL identifier. Each embeds the key in a JSON path with its own quoting rules, and accepting arbitrary keys there needs per-dialect rendering that has not been built or verified. A dialect opts in by implementing the new `dialect.JSONKeyValidator` interface.

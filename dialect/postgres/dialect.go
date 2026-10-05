@@ -96,6 +96,25 @@ func (d *Dialect) WriteArrayMembership(w *strings.Builder, writeElem func() erro
 	return nil
 }
 
+// WriteListLiteralMembership writes elem IN (v1, v2, ...), so each value is typed
+// against elem rather than defaulting to text as it would inside ARRAY[...].
+func (d *Dialect) WriteListLiteralMembership(w *strings.Builder, writeElem func() error, values []func() error) error {
+	if err := writeElem(); err != nil {
+		return err
+	}
+	w.WriteString(" IN (")
+	for i, writeValue := range values {
+		if i > 0 {
+			w.WriteString(", ")
+		}
+		if err := writeValue(); err != nil {
+			return err
+		}
+	}
+	w.WriteString(")")
+	return nil
+}
+
 // --- Type Casting ---
 
 // WriteCastToNumeric writes a PostgreSQL numeric cast suffix (::numeric).

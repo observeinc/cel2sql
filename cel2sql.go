@@ -726,6 +726,20 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 	if fun == operators.In && isListType(rhsType) {
 		// Non-JSON list membership
 		if !isFieldAccessExpression(rhs) || !con.isJSONArrayField(rhs) {
+			// A non-empty list literal is a value list where the dialect supports
+			// it, so its elements are typed against the left operand.
+			if elems := rhs.GetListExpr().GetElements(); len(elems) > 0 {
+				if w, ok := dialect.GetListLiteralMembershipWriter(con.dialect); ok {
+					values := make([]func() error, len(elems))
+					for i, elem := range elems {
+						values[i] = func() error { return con.visitMaybeNested(elem, isBinaryOrTernaryOperator(elem)) }
+					}
+					return w.WriteListLiteralMembership(&con.str,
+						func() error { return con.visitMaybeNested(lhs, lhsParen) },
+						values,
+					)
+				}
+			}
 			return con.dialect.WriteArrayMembership(&con.str,
 				func() error { return con.visitMaybeNested(lhs, lhsParen) },
 				func() error { return con.visitMaybeNested(rhs, rhsParen) },

@@ -195,14 +195,14 @@ func TestConvertParameterized(t *testing.T) {
 		{
 			name:           "IN with array literal",
 			celExpr:        `age in [18, 21, 25]`,
-			wantSQL:        "age = ANY(ARRAY[$1, $2, $3])",
+			wantSQL:        "age IN ($1, $2, $3)",
 			wantParamCount: 3,
 			wantParams:     []any{int64(18), int64(21), int64(25)},
 		},
 		{
 			name:           "string IN with array literal",
 			celExpr:        `name in ["John", "Jane", "Bob"]`,
-			wantSQL:        "name = ANY(ARRAY[$1, $2, $3])",
+			wantSQL:        "name IN ($1, $2, $3)",
 			wantParamCount: 3,
 			wantParams:     []any{"John", "Jane", "Bob"},
 		},
