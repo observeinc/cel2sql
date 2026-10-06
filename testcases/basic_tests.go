@@ -130,7 +130,7 @@ func BasicTests() []ConvertTestCase {
 			CELExpr:  `name in ["a", "b", "c"]`,
 			Category: CategoryBasic,
 			WantSQL: map[dialect.Name]string{
-				dialect.PostgreSQL: "name = ANY(ARRAY['a', 'b', 'c'])",
+				dialect.PostgreSQL: "name IN ('a', 'b', 'c')",
 				dialect.MySQL:      "JSON_CONTAINS(JSON_ARRAY('a', 'b', 'c'), CAST(name AS JSON))",
 				dialect.SQLite:     "name IN (SELECT value FROM json_each(json_array('a', 'b', 'c')))",
 				dialect.DuckDB:     "name = ANY(['a', 'b', 'c'])",
