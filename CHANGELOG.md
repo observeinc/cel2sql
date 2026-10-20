@@ -16,6 +16,16 @@
 
 ### Changed
 - `FuzzConvert` also converts a flat JSON variable through `WithJSONVariables` in all five dialects, seeded with non-identifier keys. Previously it declared no map-typed variable, so it never reached bracket-key conversion.
+- **Dependency Updates**
+  - golang.org/x/net: v0.57.0 → v0.60.0, fixing GO-2026-6603, GO-2026-6610, GO-2026-6611, GO-2026-6612 and GO-2026-6617, which `govulncheck` reported as reachable
+  - Raised with it to the versions x/net v0.60.0 requires:
+    * golang.org/x/crypto: v0.56.0 → v0.57.0
+    * golang.org/x/mod: v0.38.0 → v0.41.0
+    * golang.org/x/sync: v0.22.0 → v0.23.0
+    * golang.org/x/sys: v0.47.0 → v0.48.0
+    * golang.org/x/text: v0.41.0 → v0.42.0
+    * golang.org/x/tools: v0.48.0 → v0.49.0
+    * golang.org/x/telemetry: v0.0.0-20260708182218-49f421fb7959 → v0.0.0-20260811182544-a038080d80e5
 
 ### Added
 - **Multi-Dialect SQL Support**
