@@ -53,13 +53,17 @@ var jsonContainerExprs = []string{
 	`"env" in tags && tags["env"].exists(v, v == "prod" || v == "staging")`,
 	`("env" in tags && tags["env"].exists(v, v == "prod")) && ("team" in tags && tags["team"].exists(v, v == "sre"))`,
 	`!("env" in tags && tags["env"].exists(v, v == "prod"))`,
-	// A substring search over a tag's values.
+	// Substring searches over tag keys and values.
+	`tags.exists(k, k.startsWith("k8s."))`,
 	`"owner" in tags && tags["owner"].exists(v, v.contains("team"))`,
+	// The webapp's ranked-search tag key test.
+	`tags.map(k, k).exists(k, k == "team")`,
 	`!tags["env"].exists(v, v == "dev")`,
 	`tags["env"].all(v, v == "prod")`,
 	// Iteration variables named like the variable or another column of the row.
 	`tags["env"].exists(tags, tags == "prod")`,
 	`tags["env"].exists(id, id == "prod")`,
+	`tags.exists(tags, tags == "env")`,
 }
 
 // celMatches is the in-memory answer: the rows for which the expression is true.

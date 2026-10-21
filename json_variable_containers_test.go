@@ -86,6 +86,18 @@ func TestJSONVariableContainers_PostgreSQL(t *testing.T) {
 			wantArgs: []any{"prod"},
 		},
 		{
+			name:    "exists over the map's keys",
+			expr:    `tags.exists(k, k.matches("^team"))`,
+			wantSQL: `EXISTS (SELECT 1 FROM jsonb_object_keys(tags) AS k(k) WHERE k ~ '^team')`,
+		},
+		{
+			// The webapp's ranked-search tag key test.
+			name:     "exists over the map's keys, mapped",
+			expr:     `tags.map(k, k).exists(k, k == "env")`,
+			wantSQL:  `EXISTS (SELECT 1 FROM UNNEST(ARRAY(SELECT k FROM jsonb_object_keys(tags) AS k(k))) AS k WHERE k = $1)`,
+			wantArgs: []any{"env"},
+		},
+		{
 			name:     "a scalar value is still read as text",
 			expr:     `context.host == "web-1"`,
 			wantSQL:  `context->>'host' = $1`,
@@ -141,6 +153,7 @@ func TestJSONVariableContainers_OtherDialects(t *testing.T) {
 		`has(tags.env)`,
 		`"prod" in tags.env`,
 		`tags.env.exists(v, v == "prod")`,
+		`tags.exists(k, k == "env")`,
 	}
 
 	for _, d := range []dialectpkg.Dialect{mysqlDialect.New(), sqliteDialect.New(), duckdbDialect.New(), bigqueryDialect.New()} {

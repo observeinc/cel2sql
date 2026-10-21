@@ -20,6 +20,7 @@ import (
 //	"k" in v, has(v.k)              v ? 'k'
 //	x in v.k, list(string)          GUARD(v->'k', (v->'k') ? (x))
 //	v.k.exists(e, p), list(string)  GUARD(v->'k', EXISTS (SELECT 1 FROM jsonb_array_elements_text(v->'k') AS e(e) WHERE p))
+//	v.exists(k, p), v.map(k, k)     over jsonb_object_keys(v) AS k(k)
 //
 // The guard makes a read of an absent key NULL, as CEL raises an error for it, so
 // !v.env.exists(e, e == "prod") does not match a row with no env. Any other use
@@ -149,12 +150,22 @@ func (con *converter) visitJSONVariableComprehension(iterRange *exprpb.Expr, wri
 }
 
 // writeJSONVariableComprehensionSource writes the FROM source of a comprehension
-// over a JSON array range, aliased as iterVar. handled is false for any other
-// range, and in a dialect without dialect.JSONContainerWriter.
+// over a JSON variable's keys or a JSON array range, aliased as iterVar. handled
+// is false for any other range, and in a dialect without
+// dialect.JSONContainerWriter.
 func (con *converter) writeJSONVariableComprehensionSource(iterRange *exprpb.Expr, iterVar string) (handled bool, err error) {
-	if _, ok := dialect.GetJSONContainerWriter(con.dialect); !ok {
+	w, ok := dialect.GetJSONContainerWriter(con.dialect)
+	if !ok {
 		return false, nil
 	}
+	if con.isJSONVariableIdent(iterRange) {
+		if err := w.WriteJSONObjectKeys(&con.str, func() error { return con.visit(iterRange) }); err != nil {
+			return true, err
+		}
+		con.writeJSONSourceAlias(iterVar)
+		return true, nil
+	}
+
 	write, ok, err := con.jsonListRange(iterRange)
 	if !ok || err != nil {
 		return ok, err
@@ -171,6 +182,8 @@ func (con *converter) writeJSONVariableComprehensionSource(iterRange *exprpb.Exp
 // calls its column value whatever the alias, so a bare v in the predicate finds
 // no column of the source and resolves to any outer column named v instead:
 // tags.env.exists(name, name == "prod") would compare the row's own name column.
+// jsonb_object_keys names its column after the alias already; it is written the
+// same way so that every JSON source reads alike.
 func (con *converter) writeJSONSourceAlias(iterVar string) {
 	con.str.WriteString(" AS ")
 	con.str.WriteString(iterVar)

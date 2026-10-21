@@ -8,6 +8,7 @@
     - `"k" in v` and `has(v.k)`: `v ? 'k'`
     - `x in v["k"]`: `(v->'k') ? (x)`
     - `v["k"].exists(e, ...)` and `.all`: over `jsonb_array_elements_text(v->'k')`
+    - `v.exists(k, ...)` and `v.map(k, k)`: over `jsonb_object_keys(v)`
   - A read of a list value is wrapped in `CASE WHEN jsonb_typeof(v->'k') = 'array' THEN ... END`, so an absent key is NULL, as CEL raises an error for it, and `!v["env"].exists(e, e == "prod")` does not match a row with no `env`.
   - Any other use of a list value (comparing it, indexing into it, `size()`) is a conversion error instead of SQL that fails when it runs. Scalar values are unchanged.
   - **Other dialects are unchanged.** A dialect opts in by implementing `dialect.JSONContainerWriter`; the others convert these expressions exactly as before. SQLite, for one, already reads a list value with `json_extract`, so `"prod" in tags.env`, `size(tags.env)` and `tags.env == ["prod"]` keep working there.
