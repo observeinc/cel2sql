@@ -105,6 +105,11 @@ func WithSchemas(schemas map[string]schema.Schema) ConvertOption {
 // path with its own quoting rules, and that rendering has not been built or
 // verified for them. See dialect.JSONKeyValidator.
 //
+// A variable's values may also be lists of strings, as in map<string,
+// list<string>> object tags. With the PostgreSQL dialect such a variable supports
+// a key test ("k" in v, has(v.k)). The other dialects convert it exactly as
+// before. See dialect.JSONContainerWriter.
+//
 // Example:
 //
 //	result, err := cel2sql.ConvertParameterized(ast,
@@ -707,6 +712,12 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 	}
 	if !rhsParen && isLeftRecursive(fun) {
 		rhsParen = isSamePrecedence(fun, rhs)
+	}
+
+	if fun == operators.In {
+		if handled, err := con.visitJSONVariableIn(lhs, rhs); handled || err != nil {
+			return err
+		}
 	}
 
 	// Handle string concatenation via dialect before writing LHS.
@@ -2534,6 +2545,10 @@ func (con *converter) visitHasFunction(expr *exprpb.Expr) error {
 	sel := expr.GetSelectExpr()
 	operand := sel.GetOperand()
 	field := sel.GetField()
+
+	if handled, err := con.visitJSONVariableHas(operand, field); handled || err != nil {
+		return err
+	}
 
 	// Check if this is a direct JSON field access (e.g., table.json_column.key)
 	if con.isDirectJSONFieldAccess(operand, field) {

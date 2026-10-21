@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Fixed
+- **Object-tag filters on list-valued JSON variables (PostgreSQL)**
+  - A `WithJSONVariables` variable whose values are lists of strings, such as `map<string, list<string>>` object tags, now converts the filters an object-tag filter is built from. A test of the map's own keys, `"env" in tags`, became the unparseable `$1 IN tags`, and `has(tags.env)` a column reference. Now:
+    - `"k" in v` and `has(v.k)`: `v ? 'k'`
+  - **Other dialects are unchanged.** A dialect opts in by implementing `dialect.JSONContainerWriter`; the others convert these expressions exactly as before.
+  - Verified against PostgreSQL 17 through both `Convert` and `ConvertParameterized`: for every filter in the integration test, PostgreSQL selects exactly the rows cel-go evaluates to true.
 - **Membership in a list literal on non-text columns (PostgreSQL)**
   - With the PostgreSQL dialect, `x in [a, b]` is now written `x IN (a, b)` instead of `x = ANY(ARRAY[a, b])`. PostgreSQL types the elements of an ARRAY constructor with no reference to `x`, so an untyped placeholder or quoted literal resolved as text: `bigint_col in [1, 2]` failed under `ConvertParameterized` with "operator does not exist: bigint = text", and `uuid_col in ["…", "…"]` failed the same way in both modes. In a value list each element is resolved against `x`, and NULL semantics match `= ANY`. Parameters stay one per element, so no driver needs to encode a slice.
   - Only a non-empty list literal changes. Membership in an array column, a JSON array or an empty list is written as before. Other dialects are unchanged; a dialect opts in by implementing `dialect.ListLiteralMembershipWriter`.
