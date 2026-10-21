@@ -47,6 +47,9 @@ func guardEnv(body string) string {
 	return `CASE WHEN jsonb_typeof(tags->'env') = 'array' THEN ` + body + ` END`
 }
 
+// ternaryEnv is the JSON array ("env" in tags ? tags["env"] : []) is written as.
+const ternaryEnv = `CASE WHEN tags ? 'env' THEN tags->'env' ELSE '[]'::jsonb END`
+
 func TestJSONVariableContainers_PostgreSQL(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -98,6 +101,14 @@ func TestJSONVariableContainers_PostgreSQL(t *testing.T) {
 			wantArgs: []any{"env"},
 		},
 		{
+			// The webapp's ranked-search tag values for datasets and dashboards.
+			name: "ternary over a list value",
+			expr: `("env" in tags ? tags["env"] : []).exists(v, v == "prod")`,
+			wantSQL: `CASE WHEN jsonb_typeof(` + ternaryEnv + `) = 'array' THEN ` +
+				`EXISTS (SELECT 1 FROM jsonb_array_elements_text(` + ternaryEnv + `) AS v(v) WHERE v = $1) END`,
+			wantArgs: []any{"prod"},
+		},
+		{
 			name:     "a scalar value is still read as text",
 			expr:     `context.host == "web-1"`,
 			wantSQL:  `context->>'host' = $1`,
@@ -131,6 +142,8 @@ func TestJSONVariableContainers_Refused(t *testing.T) {
 		{name: "size of a list value", expr: `size(tags["env"]) > 0`},
 		{name: "membership in a non-string list", expr: `1 in counts.ids`},
 		{name: "a key that is not a literal", expr: `name in tags`, wantErr: cel2sql.ErrInvalidFieldName},
+		{name: "a ternary with a non-empty list literal", expr: `("env" in tags ? tags["env"] : ["x"]).exists(v, v == "x")`},
+		{name: "a ternary over list values as a value", expr: `size("env" in tags ? tags["env"] : []) > 0`},
 	}
 
 	for _, tt := range tests {
@@ -154,6 +167,7 @@ func TestJSONVariableContainers_OtherDialects(t *testing.T) {
 		`"prod" in tags.env`,
 		`tags.env.exists(v, v == "prod")`,
 		`tags.exists(k, k == "env")`,
+		`("env" in tags ? tags["env"] : []).exists(v, v == "prod")`,
 	}
 
 	for _, d := range []dialectpkg.Dialect{mysqlDialect.New(), sqliteDialect.New(), duckdbDialect.New(), bigqueryDialect.New()} {

@@ -20,6 +20,7 @@ import (
 //	"k" in v, has(v.k)              v ? 'k'
 //	x in v.k, list(string)          GUARD(v->'k', (v->'k') ? (x))
 //	v.k.exists(e, p), list(string)  GUARD(v->'k', EXISTS (SELECT 1 FROM jsonb_array_elements_text(v->'k') AS e(e) WHERE p))
+//	(c ? v.k : []).exists(e, p)     as above, over CASE WHEN c THEN v->'k' ELSE '[]'::jsonb END
 //	v.exists(k, p), v.map(k, k)     over jsonb_object_keys(v) AS k(k)
 //
 // The guard makes a read of an absent key NULL, as CEL raises an error for it, so
@@ -116,10 +117,15 @@ func (con *converter) visitJSONVariableIn(lhs, rhs *exprpb.Expr) (handled bool, 
 	})
 }
 
-// jsonListRange returns a writer for a comprehension range that is a JSON array,
-// a list value of a JSON variable: v.k or v["k"]. ok is false for any other
-// range; a list or map of something other than strings is refused.
-func (con *converter) jsonListRange(expr *exprpb.Expr) (write func() error, ok bool, err error) {
+// jsonListRange returns a writer for a comprehension range that is a JSON array:
+// a list value of a JSON variable, v.k or v["k"], or a ternary whose branches
+// are each such a range or the empty list, as in ("k" in v ? v["k"] : []). ok is
+// false for any other range; a list or map of something other than strings is
+// refused.
+func (con *converter) jsonListRange(w dialect.JSONContainerWriter, expr *exprpb.Expr) (write func() error, ok bool, err error) {
+	if call := expr.GetCallExpr(); call != nil && call.GetFunction() == operators.Conditional && len(call.GetArgs()) == 3 {
+		return con.jsonListRangeTernary(w, call.GetArgs())
+	}
 	v, ok, err := con.jsonVariableValueOf(expr)
 	if !ok || err != nil {
 		return nil, ok, err
@@ -133,6 +139,49 @@ func (con *converter) jsonListRange(expr *exprpb.Expr) (write func() error, ok b
 	return func() error { return con.writeJSONVariableContainer(v) }, true, nil
 }
 
+// jsonListRangeTernary writes c ? a : b as CASE WHEN c THEN a ELSE b END when
+// each branch is a JSON array range or the empty list, and at least one is a
+// range. The empty list is written as an empty JSON array, so the comprehension
+// over it is false for exists() and true for all(), as in CEL.
+func (con *converter) jsonListRangeTernary(w dialect.JSONContainerWriter, args []*exprpb.Expr) (write func() error, ok bool, err error) {
+	branches := make([]func() error, 2)
+	anyRange := false
+	for i, branch := range args[1:] {
+		if list := branch.GetListExpr(); list != nil && len(list.GetElements()) == 0 {
+			branches[i] = func() error {
+				w.WriteJSONEmptyArray(&con.str)
+				return nil
+			}
+			continue
+		}
+		write, ok, err := con.jsonListRange(w, branch)
+		if !ok || err != nil {
+			return nil, ok, err
+		}
+		branches[i] = write
+		anyRange = true
+	}
+	if !anyRange {
+		return nil, false, nil
+	}
+	return func() error {
+		con.str.WriteString("CASE WHEN ")
+		if err := con.visit(args[0]); err != nil {
+			return err
+		}
+		con.str.WriteString(" THEN ")
+		if err := branches[0](); err != nil {
+			return err
+		}
+		con.str.WriteString(" ELSE ")
+		if err := branches[1](); err != nil {
+			return err
+		}
+		con.str.WriteString(" END")
+		return nil
+	}, true, nil
+}
+
 // visitJSONVariableComprehension writes a comprehension over a JSON array range
 // inside the array guard, so it is NULL when the key is absent rather than true
 // for all() and false for exists(). handled is false for any other range, and in
@@ -142,7 +191,7 @@ func (con *converter) visitJSONVariableComprehension(iterRange *exprpb.Expr, wri
 	if !ok {
 		return false, nil
 	}
-	write, ok, err := con.jsonListRange(iterRange)
+	write, ok, err := con.jsonListRange(w, iterRange)
 	if !ok || err != nil {
 		return ok, err
 	}
@@ -166,7 +215,7 @@ func (con *converter) writeJSONVariableComprehensionSource(iterRange *exprpb.Exp
 		return true, nil
 	}
 
-	write, ok, err := con.jsonListRange(iterRange)
+	write, ok, err := con.jsonListRange(w, iterRange)
 	if !ok || err != nil {
 		return ok, err
 	}

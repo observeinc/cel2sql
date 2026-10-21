@@ -64,6 +64,12 @@ var jsonContainerExprs = []string{
 	`tags["env"].exists(tags, tags == "prod")`,
 	`tags["env"].exists(id, id == "prod")`,
 	`tags.exists(tags, tags == "env")`,
+	// The webapp's ranked-search tag values for datasets and dashboards.
+	`tags.map(k, k).exists(k, k == "team") && ("team" in tags ? tags["team"] : []).exists(v, v.contains("platform"))`,
+	`("team" in tags ? tags["team"] : []).exists(v, v.contains("sr"))`,
+	`!("env" in tags ? tags["env"] : []).exists(v, v == "prod")`,
+	`("env" in tags ? tags["env"] : []).all(v, v == "prod")`,
+	`(has(tags.env) ? tags["env"] : tags["team"]).exists(v, v == "sre")`,
 }
 
 // celMatches is the in-memory answer: the rows for which the expression is true.

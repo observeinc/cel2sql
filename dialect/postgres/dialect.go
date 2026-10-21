@@ -268,6 +268,11 @@ func (d *Dialect) WriteJSONArrayContainsText(w *strings.Builder, writeArray, wri
 	return nil
 }
 
+// WriteJSONEmptyArray implements dialect.JSONContainerWriter.
+func (d *Dialect) WriteJSONEmptyArray(w *strings.Builder) {
+	w.WriteString("'[]'::jsonb")
+}
+
 // WriteJSONArrayGuard implements dialect.JSONContainerWriter. jsonb_typeof is NULL
 // for an absent key, so the CASE has no matching branch and yields NULL; it also
 // keeps a value that is not an array away from functions such as

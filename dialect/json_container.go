@@ -17,6 +17,9 @@ type JSONContainerWriter interface {
 	// writeArray names holds the string writeElem names as an element.
 	WriteJSONArrayContainsText(w *strings.Builder, writeArray, writeElem func() error) error
 
+	// WriteJSONEmptyArray writes an empty JSON array.
+	WriteJSONEmptyArray(w *strings.Builder)
+
 	// WriteJSONArrayGuard writes writeBody where writeArray names a JSON array,
 	// and NULL where it names anything else, including a key that is absent.
 	WriteJSONArrayGuard(w *strings.Builder, writeArray, writeBody func() error) error
