@@ -4,9 +4,13 @@
 
 ### Fixed
 - **Object-tag filters on list-valued JSON variables (PostgreSQL)**
-  - A `WithJSONVariables` variable whose values are lists of strings, such as `map<string, list<string>>` object tags, now converts the filters an object-tag filter is built from. A test of the map's own keys, `"env" in tags`, became the unparseable `$1 IN tags`, and `has(tags.env)` a column reference. Now:
+  - A `WithJSONVariables` variable whose values are lists of strings, such as `map<string, list<string>>` object tags, now converts the filters an object-tag filter is built from. Every value was read with `->>` as text, so `"prod" in tags["env"]` became `$1 = ANY(tags->>'env')`; a test of the map's own keys, `"env" in tags`, became the unparseable `$1 IN tags`, and `has(tags.env)` a column reference. Now:
     - `"k" in v` and `has(v.k)`: `v ? 'k'`
-  - **Other dialects are unchanged.** A dialect opts in by implementing `dialect.JSONContainerWriter`; the others convert these expressions exactly as before.
+    - `x in v["k"]`: `(v->'k') ? (x)`
+    - `v["k"].exists(e, ...)` and `.all`: over `jsonb_array_elements_text(v->'k')`
+  - A read of a list value is wrapped in `CASE WHEN jsonb_typeof(v->'k') = 'array' THEN ... END`, so an absent key is NULL, as CEL raises an error for it, and `!v["env"].exists(e, e == "prod")` does not match a row with no `env`.
+  - Any other use of a list value (comparing it, indexing into it, `size()`) is a conversion error instead of SQL that fails when it runs. Scalar values are unchanged.
+  - **Other dialects are unchanged.** A dialect opts in by implementing `dialect.JSONContainerWriter`; the others convert these expressions exactly as before. SQLite, for one, already reads a list value with `json_extract`, so `"prod" in tags.env`, `size(tags.env)` and `tags.env == ["prod"]` keep working there.
   - Verified against PostgreSQL 17 through both `Convert` and `ConvertParameterized`: for every filter in the integration test, PostgreSQL selects exactly the rows cel-go evaluates to true.
 - **Membership in a list literal on non-text columns (PostgreSQL)**
   - With the PostgreSQL dialect, `x in [a, b]` is now written `x IN (a, b)` instead of `x = ANY(ARRAY[a, b])`. PostgreSQL types the elements of an ARRAY constructor with no reference to `x`, so an untyped placeholder or quoted literal resolved as text: `bigint_col in [1, 2]` failed under `ConvertParameterized` with "operator does not exist: bigint = text", and `uuid_col in ["…", "…"]` failed the same way in both modes. In a value list each element is resolved against `x`, and NULL semantics match `= ANY`. Parameters stay one per element, so no driver needs to encode a slice.

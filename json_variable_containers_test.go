@@ -42,6 +42,11 @@ func convertJSONContainer(t *testing.T, expr string, opts ...cel2sql.ConvertOpti
 	return cel2sql.ConvertParameterized(ast, opts...)
 }
 
+// guardEnv is the PostgreSQL array guard the converter wraps a read of tags.env in.
+func guardEnv(body string) string {
+	return `CASE WHEN jsonb_typeof(tags->'env') = 'array' THEN ` + body + ` END`
+}
+
 func TestJSONVariableContainers_PostgreSQL(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -52,6 +57,34 @@ func TestJSONVariableContainers_PostgreSQL(t *testing.T) {
 		{name: "key in map", expr: `"env" in tags`, wantSQL: `tags ? 'env'`},
 		{name: "has on a key", expr: `has(tags.env)`, wantSQL: `tags ? 'env'`},
 		{name: "non-identifier key in map", expr: `"k8s.cluster" in tags`, wantSQL: `tags ? 'k8s.cluster'`},
+		{
+			name:     "value in list, bracket",
+			expr:     `"prod" in tags["env"]`,
+			wantSQL:  guardEnv(`(tags->'env') ? ($1)`),
+			wantArgs: []any{"prod"},
+		},
+		{
+			name:     "value in list, dot",
+			expr:     `"prod" in tags.env`,
+			wantSQL:  guardEnv(`(tags->'env') ? ($1)`),
+			wantArgs: []any{"prod"},
+		},
+		{
+			// The webapp's objectTagFilterQuery.
+			name: "key test and values of a list",
+			expr: `"env" in tags && tags["env"].exists(v, v == "prod" || v == "dev")`,
+			wantSQL: `tags ? 'env' AND ` + guardEnv(
+				`EXISTS (SELECT 1 FROM jsonb_array_elements_text(tags->'env') AS v(v) WHERE v = $1 OR v = $2)`),
+			wantArgs: []any{"prod", "dev"},
+		},
+		{
+			// The source names its column, or the predicate's tags would be the
+			// variable rather than the element.
+			name:     "iteration variable named like the variable",
+			expr:     `tags.env.exists(tags, tags == "prod")`,
+			wantSQL:  guardEnv(`EXISTS (SELECT 1 FROM jsonb_array_elements_text(tags->'env') AS tags(tags) WHERE tags = $1)`),
+			wantArgs: []any{"prod"},
+		},
 		{
 			name:     "a scalar value is still read as text",
 			expr:     `context.host == "web-1"`,
@@ -81,6 +114,10 @@ func TestJSONVariableContainers_Refused(t *testing.T) {
 		expr    string
 		wantErr error
 	}{
+		{name: "comparing a list value", expr: `tags.env == ["prod"]`},
+		{name: "indexing a list value", expr: `tags["env"][0] == "prod"`},
+		{name: "size of a list value", expr: `size(tags["env"]) > 0`},
+		{name: "membership in a non-string list", expr: `1 in counts.ids`},
 		{name: "a key that is not a literal", expr: `name in tags`, wantErr: cel2sql.ErrInvalidFieldName},
 	}
 
@@ -102,6 +139,8 @@ func TestJSONVariableContainers_OtherDialects(t *testing.T) {
 	containerForms := []string{
 		`"env" in tags`,
 		`has(tags.env)`,
+		`"prod" in tags.env`,
+		`tags.env.exists(v, v == "prod")`,
 	}
 
 	for _, d := range []dialectpkg.Dialect{mysqlDialect.New(), sqliteDialect.New(), duckdbDialect.New(), bigqueryDialect.New()} {

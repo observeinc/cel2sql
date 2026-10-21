@@ -107,8 +107,11 @@ func WithSchemas(schemas map[string]schema.Schema) ConvertOption {
 //
 // A variable's values may also be lists of strings, as in map<string,
 // list<string>> object tags. With the PostgreSQL dialect such a variable supports
-// a key test ("k" in v, has(v.k)). The other dialects convert it exactly as
-// before. See dialect.JSONContainerWriter.
+// a key test ("k" in v, has(v.k)), and, for a list value, membership
+// (x in v["k"]) and iteration (v["k"].exists(e, ...)). A read of an absent key is
+// NULL, the SQL counterpart of the error CEL raises for it, and any other use of
+// a list or map value is refused with a conversion error. The other dialects
+// convert all of these exactly as before. See dialect.JSONContainerWriter.
 //
 // Example:
 //
@@ -1998,6 +2001,9 @@ func (con *converter) visitCallMapIndex(expr *exprpb.Expr) error {
 	}
 	m := args[0]
 	if identExpr := m.GetIdentExpr(); identExpr != nil && con.isJSONVariable(identExpr.GetName()) {
+		if err := con.checkJSONVariableScalarRead(expr); err != nil {
+			return err
+		}
 		key, err := con.extractJSONVariableKey(args[1])
 		if err != nil {
 			return err
@@ -2114,6 +2120,16 @@ func (con *converter) visitComprehension(expr *exprpb.Expr) error {
 		return fmt.Errorf("%w: failed to identify comprehension: %w", ErrInvalidComprehension, err)
 	}
 
+	if handled, err := con.visitJSONVariableComprehension(expr.GetComprehensionExpr().GetIterRange(), func() error {
+		return con.visitComprehensionOfType(expr, info)
+	}); handled || err != nil {
+		return err
+	}
+	return con.visitComprehensionOfType(expr, info)
+}
+
+// visitComprehensionOfType writes an identified comprehension.
+func (con *converter) visitComprehensionOfType(expr *exprpb.Expr, info *ComprehensionInfo) error {
 	switch info.Type {
 	case ComprehensionAll:
 		return con.visitAllComprehension(expr, info)
@@ -2147,11 +2163,9 @@ func (con *converter) visitAllComprehension(expr *exprpb.Expr, info *Comprehensi
 	iterRange := comprehension.GetIterRange()
 
 	con.str.WriteString("NOT EXISTS (SELECT 1 FROM ")
-	if err := con.writeComprehensionSource(iterRange); err != nil {
+	if err := con.writeComprehensionSource(iterRange, info.IterVar); err != nil {
 		return wrapConversionError(err, "visiting iter range in ALL comprehension")
 	}
-	con.str.WriteString(" AS ")
-	con.str.WriteString(info.IterVar)
 
 	if info.Predicate != nil {
 		con.str.WriteString(" WHERE NOT (")
@@ -2174,11 +2188,9 @@ func (con *converter) visitExistsComprehension(expr *exprpb.Expr, info *Comprehe
 	iterRange := comprehension.GetIterRange()
 
 	con.str.WriteString("EXISTS (SELECT 1 FROM ")
-	if err := con.writeComprehensionSource(iterRange); err != nil {
+	if err := con.writeComprehensionSource(iterRange, info.IterVar); err != nil {
 		return wrapConversionError(err, "visiting iter range in EXISTS comprehension")
 	}
-	con.str.WriteString(" AS ")
-	con.str.WriteString(info.IterVar)
 
 	if info.Predicate != nil {
 		con.str.WriteString(" WHERE ")
@@ -2200,11 +2212,9 @@ func (con *converter) visitExistsOneComprehension(expr *exprpb.Expr, info *Compr
 	iterRange := comprehension.GetIterRange()
 
 	con.str.WriteString("(SELECT COUNT(*) FROM ")
-	if err := con.writeComprehensionSource(iterRange); err != nil {
+	if err := con.writeComprehensionSource(iterRange, info.IterVar); err != nil {
 		return wrapConversionError(err, "visiting iter range in EXISTS_ONE comprehension")
 	}
-	con.str.WriteString(" AS ")
-	con.str.WriteString(info.IterVar)
 
 	if info.Predicate != nil {
 		con.str.WriteString(" WHERE ")
@@ -2235,11 +2245,9 @@ func (con *converter) visitMapComprehension(expr *exprpb.Expr, info *Comprehensi
 	}
 	con.dialect.WriteArraySubqueryExprClose(&con.str)
 	con.str.WriteString(" FROM ")
-	if err := con.writeComprehensionSource(iterRange); err != nil {
+	if err := con.writeComprehensionSource(iterRange, info.IterVar); err != nil {
 		return wrapConversionError(err, "visiting iter range in MAP comprehension")
 	}
-	con.str.WriteString(" AS ")
-	con.str.WriteString(info.IterVar)
 
 	if info.Filter != nil {
 		con.str.WriteString(" WHERE ")
@@ -2264,11 +2272,9 @@ func (con *converter) visitFilterComprehension(expr *exprpb.Expr, info *Comprehe
 	con.str.WriteString(info.IterVar)
 	con.dialect.WriteArraySubqueryExprClose(&con.str)
 	con.str.WriteString(" FROM ")
-	if err := con.writeComprehensionSource(iterRange); err != nil {
+	if err := con.writeComprehensionSource(iterRange, info.IterVar); err != nil {
 		return wrapConversionError(err, "visiting iter range in FILTER comprehension")
 	}
-	con.str.WriteString(" AS ")
-	con.str.WriteString(info.IterVar)
 
 	if info.Predicate != nil {
 		con.str.WriteString(" WHERE ")
@@ -2297,11 +2303,9 @@ func (con *converter) visitTransformListComprehension(expr *exprpb.Expr, info *C
 	}
 	con.dialect.WriteArraySubqueryExprClose(&con.str)
 	con.str.WriteString(" FROM ")
-	if err := con.writeComprehensionSource(comprehension.GetIterRange()); err != nil {
+	if err := con.writeComprehensionSource(comprehension.GetIterRange(), info.IterVar); err != nil {
 		return wrapConversionError(err, "visiting iter range in TRANSFORM_LIST comprehension")
 	}
-	con.str.WriteString(" AS ")
-	con.str.WriteString(info.IterVar)
 
 	if info.Filter != nil {
 		con.str.WriteString(" WHERE ")
@@ -2489,6 +2493,10 @@ func (con *converter) visitSelect(expr *exprpb.Expr) error {
 	// rather than field access on a base value.
 	if name, ok := con.qualifiedName(expr); ok {
 		return con.writeColumn(name)
+	}
+
+	if err := con.checkJSONVariableScalarRead(expr); err != nil {
+		return err
 	}
 
 	// Check if we should use JSON path operators
@@ -2736,8 +2744,22 @@ func (con *converter) visitStructMap(expr *exprpb.Expr) error {
 	return nil
 }
 
-// writeComprehensionSource writes the source expression for a comprehension (UNNEST or JSON function).
-func (con *converter) writeComprehensionSource(iterRange *exprpb.Expr) error {
+// writeComprehensionSource writes the source expression for a comprehension (UNNEST or JSON function),
+// aliased as the comprehension's iteration variable.
+func (con *converter) writeComprehensionSource(iterRange *exprpb.Expr, iterVar string) error {
+	if handled, err := con.writeJSONVariableComprehensionSource(iterRange, iterVar); handled || err != nil {
+		return err
+	}
+	if err := con.writeComprehensionRange(iterRange); err != nil {
+		return err
+	}
+	con.str.WriteString(" AS ")
+	con.str.WriteString(iterVar)
+	return nil
+}
+
+// writeComprehensionRange writes the set-returning expression a comprehension iterates.
+func (con *converter) writeComprehensionRange(iterRange *exprpb.Expr) error {
 	isJSONArray := con.isJSONArrayField(iterRange)
 	if isJSONArray {
 		jsonFunc := con.getJSONArrayFunction(iterRange)

@@ -12,8 +12,10 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 
 	"github.com/observeinc/cel2sql/v3"
+	sqliteDialect "github.com/observeinc/cel2sql/v3/dialect/sqlite"
 )
 
 // jsonContainerRows are object-tag documents chosen to tell the forms apart: an
@@ -41,6 +43,23 @@ var jsonContainerExprs = []string{
 	`!("env" in tags)`,
 	`has(tags.team)`,
 	`"k8s.cluster" in tags`,
+	`"prod" in tags["env"]`,
+	`"prod" in tags.env`,
+	`!("prod" in tags["env"])`,
+	`"prod" in tags["env"] || "sre" in tags["team"]`,
+	`"o'brien" in tags["it's"]`,
+	`"a\\b" in tags["back\\slash"]`,
+	// The webapp's objectTagFilterQuery, and its negation.
+	`"env" in tags && tags["env"].exists(v, v == "prod" || v == "staging")`,
+	`("env" in tags && tags["env"].exists(v, v == "prod")) && ("team" in tags && tags["team"].exists(v, v == "sre"))`,
+	`!("env" in tags && tags["env"].exists(v, v == "prod"))`,
+	// A substring search over a tag's values.
+	`"owner" in tags && tags["owner"].exists(v, v.contains("team"))`,
+	`!tags["env"].exists(v, v == "dev")`,
+	`tags["env"].all(v, v == "prod")`,
+	// Iteration variables named like the variable or another column of the row.
+	`tags["env"].exists(tags, tags == "prod")`,
+	`tags["env"].exists(id, id == "prod")`,
 }
 
 // celMatches is the in-memory answer: the rows for which the expression is true.
@@ -119,6 +138,42 @@ func TestJSONVariableContainers_PostgreSQL_MatchesCEL(t *testing.T) {
 
 			assert.Equal(t, want, sqlMatches(t, db, inlined, nil), "Convert\nSQL: %s", inlined)
 			assert.Equal(t, want, sqlMatches(t, db, bound.SQL, bound.Parameters), "ConvertParameterized\nSQL: %s", bound.SQL)
+		})
+	}
+}
+
+// TestJSONVariableContainers_SQLiteUnchanged runs filters over a list value that
+// SQLite already converted correctly, reading it with json_extract, to pin that
+// a dialect without dialect.JSONContainerWriter keeps converting them as before.
+func TestJSONVariableContainers_SQLiteUnchanged(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	_, err = db.Exec(`CREATE TABLE obj (id INT, tags TEXT)`)
+	require.NoError(t, err)
+	for _, row := range jsonContainerRows {
+		_, err = db.Exec(`INSERT INTO obj VALUES (?, ?)`, row.id, row.doc)
+		require.NoError(t, err)
+	}
+
+	env, err := cel.NewEnv(cel.Variable("tags", cel.MapType(cel.StringType, cel.ListType(cel.StringType))))
+	require.NoError(t, err)
+
+	for _, expr := range []string{
+		`"prod" in tags.env`,
+		`size(tags.env) > 1`,
+		`tags.env == ["prod"]`,
+	} {
+		t.Run(expr, func(t *testing.T) {
+			ast, issues := env.Compile(expr)
+			require.NoError(t, issues.Err())
+			condition, err := cel2sql.Convert(ast, cel2sql.WithDialect(sqliteDialect.New()), cel2sql.WithJSONVariables("tags"))
+			require.NoError(t, err)
+			assert.Equal(t, celMatches(t, env, ast), sqlMatches(t, db, condition, nil), "SQL: %s", condition)
 		})
 	}
 }
