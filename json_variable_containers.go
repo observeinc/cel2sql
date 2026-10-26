@@ -25,8 +25,9 @@ import (
 //
 // The guard makes a read of an absent key NULL, as CEL raises an error for it, so
 // !v.env.exists(e, e == "prod") does not match a row with no env. Any other use
-// of a list value is refused. A dialect without dialect.JSONContainerWriter
-// converts all of these exactly as it did before.
+// of a list value, filter() and map() over it included, is refused. A dialect
+// without dialect.JSONContainerWriter converts all of these exactly as it did
+// before.
 
 // jsonVariableValue is one read of a JSON variable's value, v.k or v["k"].
 type jsonVariableValue struct {
@@ -184,9 +185,12 @@ func (con *converter) jsonListRangeTernary(w dialect.JSONContainerWriter, args [
 
 // visitJSONVariableComprehension writes a comprehension over a JSON array range
 // inside the array guard, so it is NULL when the key is absent rather than true
-// for all() and false for exists(). handled is false for any other range, and in
-// a dialect without dialect.JSONContainerWriter.
-func (con *converter) visitJSONVariableComprehension(iterRange *exprpb.Expr, writeComprehension func() error) (handled bool, err error) {
+// for all() and false for exists(). Only exists(), all() and exists_one() are
+// written: filter() and map() yield a list, and size() and a comprehension over
+// it read the guard's NULL as an empty list, so size(v.k.filter(e, p)) == 0 would
+// match a row with no k. handled is false for any other range, and in a dialect
+// without dialect.JSONContainerWriter.
+func (con *converter) visitJSONVariableComprehension(iterRange *exprpb.Expr, typ ComprehensionType, writeComprehension func() error) (handled bool, err error) {
 	w, ok := dialect.GetJSONContainerWriter(con.dialect)
 	if !ok {
 		return false, nil
@@ -195,7 +199,13 @@ func (con *converter) visitJSONVariableComprehension(iterRange *exprpb.Expr, wri
 	if !ok || err != nil {
 		return ok, err
 	}
-	return true, w.WriteJSONArrayGuard(&con.str, write, writeComprehension)
+	switch typ {
+	case ComprehensionAll, ComprehensionExists, ComprehensionExistsOne:
+		return true, w.WriteJSONArrayGuard(&con.str, write, writeComprehension)
+	default:
+		return true, newConversionErrorf(errMsgUnsupportedComprehension,
+			"%s over a JSON variable's list value; only exists(), all() and exists_one() are supported", typ)
+	}
 }
 
 // writeJSONVariableComprehensionSource writes the FROM source of a comprehension

@@ -109,6 +109,12 @@ func TestJSONVariableContainers_PostgreSQL(t *testing.T) {
 			wantArgs: []any{"prod"},
 		},
 		{
+			name:     "exists_one over a list value",
+			expr:     `tags.env.exists_one(v, v == "prod")`,
+			wantSQL:  guardEnv(`(SELECT COUNT(*) FROM jsonb_array_elements_text(tags->'env') AS v(v) WHERE v = $1) = 1`),
+			wantArgs: []any{"prod"},
+		},
+		{
 			name:     "a scalar value is still read as text",
 			expr:     `context.host == "web-1"`,
 			wantSQL:  `context->>'host' = $1`,
@@ -144,6 +150,11 @@ func TestJSONVariableContainers_Refused(t *testing.T) {
 		{name: "a key that is not a literal", expr: `name in tags`, wantErr: cel2sql.ErrInvalidFieldName},
 		{name: "a ternary with a non-empty list literal", expr: `("env" in tags ? tags["env"] : ["x"]).exists(v, v == "x")`},
 		{name: "a ternary over list values as a value", expr: `size("env" in tags ? tags["env"] : []) > 0`},
+		// The guard's NULL would reach size() and the outer exists() as an empty
+		// list, so each of these would match a row with no env.
+		{name: "filter over a list value", expr: `size(tags["env"].filter(v, v == "prod")) == 0`},
+		{name: "map over a list value", expr: `!tags.env.map(v, v).exists(v, v == "prod")`},
+		{name: "filter over a ternary", expr: `("env" in tags ? tags["env"] : []).filter(v, v == "prod").size() == 0`},
 	}
 
 	for _, tt := range tests {
@@ -168,6 +179,8 @@ func TestJSONVariableContainers_OtherDialects(t *testing.T) {
 		`tags.env.exists(v, v == "prod")`,
 		`tags.exists(k, k == "env")`,
 		`("env" in tags ? tags["env"] : []).exists(v, v == "prod")`,
+		`size(tags.env.filter(v, v == "prod")) == 0`,
+		`!tags.env.map(v, v).exists(v, v == "prod")`,
 	}
 
 	for _, d := range []dialectpkg.Dialect{mysqlDialect.New(), sqliteDialect.New(), duckdbDialect.New(), bigqueryDialect.New()} {

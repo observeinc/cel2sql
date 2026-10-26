@@ -11,7 +11,7 @@
     - `v.exists(k, ...)` and `v.map(k, k)`: over `jsonb_object_keys(v)`
     - `("k" in v ? v["k"] : []).exists(e, ...)`, as the webapp's ranked search writes a tag value: over `CASE WHEN v ? 'k' THEN v->'k' ELSE '[]'::jsonb END`. A branch may be a list value, the empty list or another such ternary; a ternary used any other way is still refused.
   - A read of a list value is wrapped in `CASE WHEN jsonb_typeof(v->'k') = 'array' THEN ... END`, so an absent key is NULL, as CEL raises an error for it, and `!v["env"].exists(e, e == "prod")` does not match a row with no `env`.
-  - Any other use of a list value (comparing it, indexing into it, `size()`) is a conversion error instead of SQL that fails when it runs. Scalar values are unchanged.
+  - Any other use of a list value (comparing it, indexing into it, `size()`, `filter()` or `map()` over it) is a conversion error instead of SQL that fails when it runs. `filter()` and `map()` yield a list, and `size()` or a comprehension over it would read the guard's NULL as an empty list, so `size(v["env"].filter(e, ...)) == 0` would match a row with no `env`. Scalar values are unchanged.
   - **Other dialects are unchanged.** A dialect opts in by implementing `dialect.JSONContainerWriter`; the others convert these expressions exactly as before. SQLite, for one, already reads a list value with `json_extract`, so `"prod" in tags.env`, `size(tags.env)` and `tags.env == ["prod"]` keep working there.
   - Verified against PostgreSQL 17 through both `Convert` and `ConvertParameterized`: for every filter in the integration test, PostgreSQL selects exactly the rows cel-go evaluates to true.
 - **Membership in a list literal on non-text columns (PostgreSQL)**

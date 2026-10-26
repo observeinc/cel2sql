@@ -60,6 +60,8 @@ var jsonContainerExprs = []string{
 	`tags.map(k, k).exists(k, k == "team")`,
 	`!tags["env"].exists(v, v == "dev")`,
 	`tags["env"].all(v, v == "prod")`,
+	`tags["env"].exists_one(v, v == "prod")`,
+	`!tags["env"].exists_one(v, v == "prod")`,
 	// Iteration variables named like the variable or another column of the row.
 	`tags["env"].exists(tags, tags == "prod")`,
 	`tags["env"].exists(id, id == "prod")`,

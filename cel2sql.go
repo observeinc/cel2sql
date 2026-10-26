@@ -108,10 +108,11 @@ func WithSchemas(schemas map[string]schema.Schema) ConvertOption {
 // A variable's values may also be lists of strings, as in map<string,
 // list<string>> object tags. With the PostgreSQL dialect such a variable supports
 // a key test ("k" in v, has(v.k)), iteration over its keys (v.exists(k, ...)),
-// and, for a list value, membership (x in v["k"]) and iteration
-// (v["k"].exists(e, ...), also as ("k" in v ? v["k"] : []).exists(e, ...)). A
-// read of an absent key is NULL, the SQL counterpart of the error CEL raises for
-// it, and any other use of a list or map value is refused with a conversion
+// and, for a list value, membership (x in v["k"]) and iteration with exists(),
+// all() or exists_one() (v["k"].exists(e, ...), also as
+// ("k" in v ? v["k"] : []).exists(e, ...)). A read of an absent key is NULL, the
+// SQL counterpart of the error CEL raises for it, and any other use of a list or
+// map value, filter() and map() over it included, is refused with a conversion
 // error. The other dialects convert all of these exactly as before. See
 // dialect.JSONContainerWriter.
 //
@@ -2122,7 +2123,7 @@ func (con *converter) visitComprehension(expr *exprpb.Expr) error {
 		return fmt.Errorf("%w: failed to identify comprehension: %w", ErrInvalidComprehension, err)
 	}
 
-	if handled, err := con.visitJSONVariableComprehension(expr.GetComprehensionExpr().GetIterRange(), func() error {
+	if handled, err := con.visitJSONVariableComprehension(expr.GetComprehensionExpr().GetIterRange(), info.Type, func() error {
 		return con.visitComprehensionOfType(expr, info)
 	}); handled || err != nil {
 		return err

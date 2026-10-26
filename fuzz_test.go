@@ -75,6 +75,7 @@ func FuzzConvert(f *testing.F) {
 		`tags.exists(k, k.matches("^te")) || tags.map(k, k).exists(k, k == "a b")`,
 		`("a b" in tags ? tags["a b"] : []).all(v, v != "")`,
 		`tags["env"] == ["prod"] || tags == {}`,
+		`size(tags["env"].filter(v, v == "a")) == 0 || !tags.env.map(v, v).exists(v, v == "a")`,
 	}
 
 	for _, seed := range seeds {
