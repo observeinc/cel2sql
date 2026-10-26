@@ -25,9 +25,9 @@ import (
 //
 // The guard makes a read of an absent key NULL, as CEL raises an error for it, so
 // !v.env.exists(e, e == "prod") does not match a row with no env. Any other use
-// of a list value, filter() and map() over it included, is refused. A dialect
-// without dialect.JSONContainerWriter converts all of these exactly as it did
-// before.
+// of a list value, filter() and map() over it included, is refused, as is
+// comparing v with a map literal. A dialect without dialect.JSONContainerWriter
+// converts all of these exactly as it did before.
 
 // jsonVariableValue is one read of a JSON variable's value, v.k or v["k"].
 type jsonVariableValue struct {
@@ -275,6 +275,29 @@ func (con *converter) checkJSONVariableScalarRead(expr *exprpb.Expr) error {
 	}
 	if isContainerType(v.typ) {
 		return refuseJSONContainerValue(v)
+	}
+	return nil
+}
+
+// checkJSONVariableComparison refuses comparing a JSON variable with a map
+// literal, v == {}, which would be written as v = ROW() and fail when it runs.
+// Any other comparison of the variable itself, with null or another variable,
+// is written as before. A dialect without dialect.JSONContainerWriter keeps what
+// it wrote before.
+func (con *converter) checkJSONVariableComparison(lhs, rhs *exprpb.Expr) error {
+	if _, ok := dialect.GetJSONContainerWriter(con.dialect); !ok {
+		return nil
+	}
+	variable, other := lhs, rhs
+	if !con.isJSONVariableIdent(variable) {
+		variable, other = rhs, lhs
+	}
+	if !con.isJSONVariableIdent(variable) {
+		return nil
+	}
+	if s := other.GetStructExpr(); s != nil && s.GetMessageName() == "" {
+		return newConversionErrorf(errMsgUnsupportedType,
+			"JSON variable %q cannot be compared with a map literal", variable.GetIdentExpr().GetName())
 	}
 	return nil
 }

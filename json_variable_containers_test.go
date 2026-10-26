@@ -155,6 +155,8 @@ func TestJSONVariableContainers_Refused(t *testing.T) {
 		{name: "filter over a list value", expr: `size(tags["env"].filter(v, v == "prod")) == 0`},
 		{name: "map over a list value", expr: `!tags.env.map(v, v).exists(v, v == "prod")`},
 		{name: "filter over a ternary", expr: `("env" in tags ? tags["env"] : []).filter(v, v == "prod").size() == 0`},
+		{name: "comparing the variable with an empty map", expr: `tags == {}`},
+		{name: "comparing the variable with a map literal", expr: `{"env": ["prod"]} != tags`},
 	}
 
 	for _, tt := range tests {
@@ -181,6 +183,7 @@ func TestJSONVariableContainers_OtherDialects(t *testing.T) {
 		`("env" in tags ? tags["env"] : []).exists(v, v == "prod")`,
 		`size(tags.env.filter(v, v == "prod")) == 0`,
 		`!tags.env.map(v, v).exists(v, v == "prod")`,
+		`tags == {}`,
 	}
 
 	for _, d := range []dialectpkg.Dialect{mysqlDialect.New(), sqliteDialect.New(), duckdbDialect.New(), bigqueryDialect.New()} {

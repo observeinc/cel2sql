@@ -111,10 +111,12 @@ func WithSchemas(schemas map[string]schema.Schema) ConvertOption {
 // and, for a list value, membership (x in v["k"]) and iteration with exists(),
 // all() or exists_one() (v["k"].exists(e, ...), also as
 // ("k" in v ? v["k"] : []).exists(e, ...)). A read of an absent key is NULL, the
-// SQL counterpart of the error CEL raises for it, and any other use of a list or
-// map value, filter() and map() over it included, is refused with a conversion
-// error. The other dialects convert all of these exactly as before. See
-// dialect.JSONContainerWriter.
+// SQL counterpart of the error CEL raises for it. Any other use of a list or map
+// value read from the variable (v.k, v["k"]), filter() and map() over it
+// included, is refused with a conversion error, as is comparing the variable
+// itself with a map literal (v == {}). Other uses of the variable itself are
+// written as before and are not checked. The other dialects convert all of these
+// exactly as before. See dialect.JSONContainerWriter.
 //
 // Example:
 //
@@ -722,6 +724,11 @@ func (con *converter) visitCallBinary(expr *exprpb.Expr) error {
 
 	if fun == operators.In {
 		if handled, err := con.visitJSONVariableIn(lhs, rhs); handled || err != nil {
+			return err
+		}
+	}
+	if fun == operators.Equals || fun == operators.NotEquals {
+		if err := con.checkJSONVariableComparison(lhs, rhs); err != nil {
 			return err
 		}
 	}
