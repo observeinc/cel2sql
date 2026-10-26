@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1792526750760,
+  "lastUpdate": 1793055747403,
   "repoUrl": "https://github.com/observeinc/cel2sql",
   "entries": {
     "Benchmark": [
@@ -15540,6 +15540,1734 @@ window.BENCHMARK_DATA = {
             "value": 2,
             "unit": "allocs/op",
             "extra": "201370 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "yuanli.zhu@snowflake.com",
+            "name": "Yuanli Zhu",
+            "username": "sfc-gh-yuzhu"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3d7607a0e605296f4632a1c3a7a1ab65a4e85c2a",
+          "message": "fix(postgres): convert object-tag filters on list-valued JSON variables (#8)\n\n* feat(dialect): add JSONContainerWriter for list-valued JSON variables\n\nA WithJSONVariables value that is a list, such as an object tag's values\nin map<string, list<string>>, has to stay JSON to be tested or iterated,\nand a map's keys have to be read as a set. JSONContainerWriter is the\nopt-in interface for the three SQL forms that needs: the keys of an\nobject, a string-element test on an array, and a guard that is NULL\nunless its operand is an array.\n\nPostgreSQL implements it with jsonb_object_keys, the jsonb ? operator\nand jsonb_typeof. Nothing calls it yet.\n\nCo-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>\n\n* fix(postgres): test a JSON variable's keys with in and has()\n\nA key test on a WithJSONVariables map, \"env\" in tags, became the\nunparseable $1 IN tags, and has(tags.env) a column reference. For a\ndialect that implements dialect.JSONContainerWriter both are now written\nwith the jsonb ? operator, tags ? 'env'. The key must be a literal,\nsince it is named in the SQL. Every other dialect converts them exactly\nas before.\n\nThe integration test seeds object-tag documents and checks each filter\nagainst cel-go, through both Convert and ConvertParameterized.\n\nCo-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>\n\n* fix(postgres): read a JSON variable's list values as JSON\n\nA WithJSONVariables value that is a list of strings, such as an object\ntag's values, was read with ->> as text, so with PostgreSQL \"prod\" in\ntags[\"env\"] became $1 = ANY(tags->>'env') and tags[\"env\"].exists(...)\nan UNNEST of text. For a dialect with dialect.JSONContainerWriter such a\nvalue now stays JSON: membership uses (tags->'env') ? $1 and a\ncomprehension iterates jsonb_array_elements_text(tags->'env'), with v.k\nand v[\"k\"] alike.\n\nThat source is aliased AS v(v), naming its column after the iteration\nvariable too. jsonb_array_elements_text calls its column value whatever\nthe alias, so a bare v in the predicate would resolve to any outer\ncolumn named v instead: tags[\"env\"].exists(name, name == \"prod\") would\ncompare the row's own name column. writeComprehensionSource now takes\nthe iteration variable and writes the alias for every source; the\nothers are written exactly as before.\n\nEach read is wrapped in CASE WHEN jsonb_typeof(tags->'env') = 'array'\nTHEN ... END, so an absent key is NULL, the SQL counterpart of the error\nCEL raises for it: !tags[\"env\"].exists(v, v == \"prod\") does not match a\nrow with no env, where an absent list read as empty would.\n\nWith PostgreSQL any other use of a list value, comparing it, indexing\ninto it or taking its size(), is a conversion error instead of\ntext-reading SQL that fails when it runs. Every other dialect converts\nall of these exactly as before: SQLite already reads a list value with\njson_extract, and a test now runs those filters against it.\n\nCo-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>\n\n* fix(postgres): iterate a JSON variable's keys\n\nA comprehension over a WithJSONVariables map, tags.exists(k, ...),\niterated UNNEST(tags), which PostgreSQL refuses on jsonb. For a dialect\nwith dialect.JSONContainerWriter it now iterates jsonb_object_keys(tags),\nso a substring search over tag keys and the webapp's ranked-search key\ntest, tags.map(k, k).exists(k, k == \"env\"), both convert. Every other\ndialect converts them exactly as before.\n\nCo-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>\n\n* feat(postgres): iterate a ternary over a JSON variable's list values\n\nThe webapp's ranked search writes a tag's values for datasets and\ndashboards as (\"k\" in objectTags ? objectTags[\"k\"] : []), so #team:sre\ncompiles to (\"team\" in objectTags ? objectTags[\"team\"] : []).exists(...).\nThat range read objectTags[\"k\"] as an ordinary value, which is refused.\n\nFor a dialect with dialect.JSONContainerWriter, a comprehension range\nmay now be a ternary whose branches are each a list value of a JSON\nvariable, the empty list, or another such ternary. It is written as\nCASE WHEN c THEN v->'k' ELSE '[]'::jsonb END inside the usual array\nguard, so exists() over the empty branch is false and all() true, as in\nCEL. JSONContainerWriter gains WriteJSONEmptyArray. A ternary anywhere\nelse, or one with a non-empty list literal branch, is still refused, and\nevery other dialect converts it exactly as before.\n\nCo-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>\n\n* test: seed FuzzConvert with object-tag filters\n\nFuzzConvert declares tags as map<string, list<string>> beside meta and\nconverts both as JSON variables in all five dialects, seeded with the\nkey tests, membership, key and value iteration, the ternary range, and\nuses of a list value or of the variable itself that have no form here.\n\nCo-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>\n\n* fix(postgres): refuse filter() and map() over a JSON variable's list value\n\nA comprehension over a list value is written inside the array guard,\nso it is NULL when the key is absent, as CEL raises an error for it.\nexists(), all() and exists_one() keep that NULL to the top of the\nfilter, but filter() and map() yield a list, and size() and a\ncomprehension over it read the NULL as an empty list:\nsize(tags[\"env\"].filter(v, v == \"prod\")) == 0 and\n!tags.env.map(v, v).exists(v, v == \"prod\") matched a row with no env.\n\nFor a dialect with dialect.JSONContainerWriter only those three are now\nwritten over a list value or the ternary range; any other comprehension\nis a conversion error, as on main they were SQL that failed when it ran.\nIteration over the map's keys, tags.map(k, k), is unchanged, and every\nother dialect converts them all exactly as before. No filter the webapp\nemits takes filter() or map() over a list value.\n\nCo-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>\n\n* fix(postgres): refuse comparing a JSON variable with a map literal\n\nWithJSONVariables documented that any other use of a list or map value\nis refused, but only a value read from the variable, v.k or v[\"k\"], was\nchecked. The variable itself compared with a map literal, tags == {},\nwas still written tags = ROW(), which fails when it runs.\n\nFor a dialect with dialect.JSONContainerWriter, == and != between a\nJSON variable and a map literal, on either side, are now a conversion\nerror. Any other comparison of the variable itself is written as\nbefore, and every other dialect converts it exactly as before. The\ndocumentation now names what is refused and says that other uses of the\nvariable itself are not checked.\n\nCo-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Opus 5.5 (1M context) <noreply@anthropic.com>",
+          "timestamp": "2026-10-26T15:59:18-07:00",
+          "tree_id": "39c63dca9cdd4a1a4e1b61cd842647019749ddbf",
+          "url": "https://github.com/observeinc/cel2sql/commit/3d7607a0e605296f4632a1c3a7a1ab65a4e85c2a"
+        },
+        "date": 1793055746093,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkByteArrayConversion (github.com/observeinc/cel2sql/v3)",
+            "value": 8695,
+            "unit": "ns/op\t   14961 B/op\t      32 allocs/op",
+            "extra": "134436 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkByteArrayConversion (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 8695,
+            "unit": "ns/op",
+            "extra": "134436 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkByteArrayConversion (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 14961,
+            "unit": "B/op",
+            "extra": "134436 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkByteArrayConversion (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 32,
+            "unit": "allocs/op",
+            "extra": "134436 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/equality (github.com/observeinc/cel2sql/v3)",
+            "value": 2656,
+            "unit": "ns/op\t    1848 B/op\t      27 allocs/op",
+            "extra": "475933 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/equality (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 2656,
+            "unit": "ns/op",
+            "extra": "475933 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/equality (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 1848,
+            "unit": "B/op",
+            "extra": "475933 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/equality (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 27,
+            "unit": "allocs/op",
+            "extra": "475933 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/greater_than (github.com/observeinc/cel2sql/v3)",
+            "value": 2586,
+            "unit": "ns/op\t    1848 B/op\t      27 allocs/op",
+            "extra": "392234 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/greater_than (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 2586,
+            "unit": "ns/op",
+            "extra": "392234 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/greater_than (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 1848,
+            "unit": "B/op",
+            "extra": "392234 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/greater_than (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 27,
+            "unit": "allocs/op",
+            "extra": "392234 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/string_equality (github.com/observeinc/cel2sql/v3)",
+            "value": 2474,
+            "unit": "ns/op\t    1888 B/op\t      29 allocs/op",
+            "extra": "453426 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/string_equality (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 2474,
+            "unit": "ns/op",
+            "extra": "453426 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/string_equality (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 1888,
+            "unit": "B/op",
+            "extra": "453426 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/string_equality (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 29,
+            "unit": "allocs/op",
+            "extra": "453426 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/boolean_check (github.com/observeinc/cel2sql/v3)",
+            "value": 1643,
+            "unit": "ns/op\t    1424 B/op\t      18 allocs/op",
+            "extra": "659794 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/boolean_check (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 1643,
+            "unit": "ns/op",
+            "extra": "659794 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/boolean_check (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 1424,
+            "unit": "B/op",
+            "extra": "659794 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertSimple/boolean_check (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 18,
+            "unit": "allocs/op",
+            "extra": "659794 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/logical_and (github.com/observeinc/cel2sql/v3)",
+            "value": 3484,
+            "unit": "ns/op\t    2424 B/op\t      39 allocs/op",
+            "extra": "329686 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/logical_and (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3484,
+            "unit": "ns/op",
+            "extra": "329686 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/logical_and (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2424,
+            "unit": "B/op",
+            "extra": "329686 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/logical_and (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 39,
+            "unit": "allocs/op",
+            "extra": "329686 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/logical_or (github.com/observeinc/cel2sql/v3)",
+            "value": 4127,
+            "unit": "ns/op\t    2848 B/op\t      48 allocs/op",
+            "extra": "280928 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/logical_or (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 4127,
+            "unit": "ns/op",
+            "extra": "280928 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/logical_or (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2848,
+            "unit": "B/op",
+            "extra": "280928 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/logical_or (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 48,
+            "unit": "allocs/op",
+            "extra": "280928 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_add (github.com/observeinc/cel2sql/v3)",
+            "value": 3119,
+            "unit": "ns/op\t    2288 B/op\t      37 allocs/op",
+            "extra": "360009 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_add (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3119,
+            "unit": "ns/op",
+            "extra": "360009 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_add (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2288,
+            "unit": "B/op",
+            "extra": "360009 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_add (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 37,
+            "unit": "allocs/op",
+            "extra": "360009 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_sub (github.com/observeinc/cel2sql/v3)",
+            "value": 3116,
+            "unit": "ns/op\t    2288 B/op\t      37 allocs/op",
+            "extra": "361718 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_sub (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3116,
+            "unit": "ns/op",
+            "extra": "361718 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_sub (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2288,
+            "unit": "B/op",
+            "extra": "361718 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_sub (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 37,
+            "unit": "allocs/op",
+            "extra": "361718 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_mul (github.com/observeinc/cel2sql/v3)",
+            "value": 3349,
+            "unit": "ns/op\t    2304 B/op\t      39 allocs/op",
+            "extra": "336818 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_mul (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3349,
+            "unit": "ns/op",
+            "extra": "336818 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_mul (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2304,
+            "unit": "B/op",
+            "extra": "336818 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_mul (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 39,
+            "unit": "allocs/op",
+            "extra": "336818 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_div (github.com/observeinc/cel2sql/v3)",
+            "value": 3363,
+            "unit": "ns/op\t    2304 B/op\t      39 allocs/op",
+            "extra": "331118 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_div (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3363,
+            "unit": "ns/op",
+            "extra": "331118 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_div (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2304,
+            "unit": "B/op",
+            "extra": "331118 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/arithmetic_div (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 39,
+            "unit": "allocs/op",
+            "extra": "331118 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/modulo (github.com/observeinc/cel2sql/v3)",
+            "value": 3084,
+            "unit": "ns/op\t    2288 B/op\t      37 allocs/op",
+            "extra": "358735 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/modulo (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3084,
+            "unit": "ns/op",
+            "extra": "358735 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/modulo (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2288,
+            "unit": "B/op",
+            "extra": "358735 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/modulo (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 37,
+            "unit": "allocs/op",
+            "extra": "358735 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/string_concat (github.com/observeinc/cel2sql/v3)",
+            "value": 3601,
+            "unit": "ns/op\t    2576 B/op\t      44 allocs/op",
+            "extra": "319735 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/string_concat (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3601,
+            "unit": "ns/op",
+            "extra": "319735 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/string_concat (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2576,
+            "unit": "B/op",
+            "extra": "319735 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/string_concat (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 44,
+            "unit": "allocs/op",
+            "extra": "319735 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/complex_expression (github.com/observeinc/cel2sql/v3)",
+            "value": 8063,
+            "unit": "ns/op\t    5096 B/op\t      87 allocs/op",
+            "extra": "148201 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/complex_expression (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 8063,
+            "unit": "ns/op",
+            "extra": "148201 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/complex_expression (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 5096,
+            "unit": "B/op",
+            "extra": "148201 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertOperators/complex_expression (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 87,
+            "unit": "allocs/op",
+            "extra": "148201 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/all_simple (github.com/observeinc/cel2sql/v3)",
+            "value": 6046,
+            "unit": "ns/op\t    4416 B/op\t      72 allocs/op",
+            "extra": "190534 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/all_simple (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 6046,
+            "unit": "ns/op",
+            "extra": "190534 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/all_simple (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 4416,
+            "unit": "B/op",
+            "extra": "190534 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/all_simple (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 72,
+            "unit": "allocs/op",
+            "extra": "190534 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/all_complex (github.com/observeinc/cel2sql/v3)",
+            "value": 8586,
+            "unit": "ns/op\t    6256 B/op\t      95 allocs/op",
+            "extra": "134982 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/all_complex (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 8586,
+            "unit": "ns/op",
+            "extra": "134982 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/all_complex (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 6256,
+            "unit": "B/op",
+            "extra": "134982 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/all_complex (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 95,
+            "unit": "allocs/op",
+            "extra": "134982 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/exists_simple (github.com/observeinc/cel2sql/v3)",
+            "value": 6499,
+            "unit": "ns/op\t    4961 B/op\t      81 allocs/op",
+            "extra": "175129 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/exists_simple (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 6499,
+            "unit": "ns/op",
+            "extra": "175129 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/exists_simple (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 4961,
+            "unit": "B/op",
+            "extra": "175129 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/exists_simple (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 81,
+            "unit": "allocs/op",
+            "extra": "175129 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/exists_complex (github.com/observeinc/cel2sql/v3)",
+            "value": 8690,
+            "unit": "ns/op\t    6689 B/op\t     102 allocs/op",
+            "extra": "134241 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/exists_complex (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 8690,
+            "unit": "ns/op",
+            "extra": "134241 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/exists_complex (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 6689,
+            "unit": "B/op",
+            "extra": "134241 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/exists_complex (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 102,
+            "unit": "allocs/op",
+            "extra": "134241 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/exists_one (github.com/observeinc/cel2sql/v3)",
+            "value": 7818,
+            "unit": "ns/op\t    6000 B/op\t      93 allocs/op",
+            "extra": "149236 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/exists_one (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 7818,
+            "unit": "ns/op",
+            "extra": "149236 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/exists_one (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 6000,
+            "unit": "B/op",
+            "extra": "149236 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/exists_one (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 93,
+            "unit": "allocs/op",
+            "extra": "149236 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/filter (github.com/observeinc/cel2sql/v3)",
+            "value": 8243,
+            "unit": "ns/op\t    6168 B/op\t     110 allocs/op",
+            "extra": "145035 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/filter (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 8243,
+            "unit": "ns/op",
+            "extra": "145035 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/filter (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 6168,
+            "unit": "B/op",
+            "extra": "145035 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/filter (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 110,
+            "unit": "allocs/op",
+            "extra": "145035 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/map (github.com/observeinc/cel2sql/v3)",
+            "value": 6754,
+            "unit": "ns/op\t    4992 B/op\t      89 allocs/op",
+            "extra": "170146 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/map (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 6754,
+            "unit": "ns/op",
+            "extra": "170146 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/map (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 4992,
+            "unit": "B/op",
+            "extra": "170146 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertComprehensions/map (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 89,
+            "unit": "allocs/op",
+            "extra": "170146 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/simple_access (github.com/observeinc/cel2sql/v3)",
+            "value": 3889,
+            "unit": "ns/op\t    2344 B/op\t      39 allocs/op",
+            "extra": "295030 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/simple_access (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3889,
+            "unit": "ns/op",
+            "extra": "295030 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/simple_access (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2344,
+            "unit": "B/op",
+            "extra": "295030 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/simple_access (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 39,
+            "unit": "allocs/op",
+            "extra": "295030 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/nested_access (github.com/observeinc/cel2sql/v3)",
+            "value": 4566,
+            "unit": "ns/op\t    2616 B/op\t      45 allocs/op",
+            "extra": "255927 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/nested_access (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 4566,
+            "unit": "ns/op",
+            "extra": "255927 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/nested_access (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2616,
+            "unit": "B/op",
+            "extra": "255927 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/nested_access (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 45,
+            "unit": "allocs/op",
+            "extra": "255927 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/json_has (github.com/observeinc/cel2sql/v3)",
+            "value": 3192,
+            "unit": "ns/op\t    1976 B/op\t      31 allocs/op",
+            "extra": "358000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/json_has (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3192,
+            "unit": "ns/op",
+            "extra": "358000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/json_has (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 1976,
+            "unit": "B/op",
+            "extra": "358000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/json_has (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 31,
+            "unit": "allocs/op",
+            "extra": "358000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/nested_json_has (github.com/observeinc/cel2sql/v3)",
+            "value": 3592,
+            "unit": "ns/op\t    2136 B/op\t      34 allocs/op",
+            "extra": "321022 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/nested_json_has (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3592,
+            "unit": "ns/op",
+            "extra": "321022 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/nested_json_has (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2136,
+            "unit": "B/op",
+            "extra": "321022 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/nested_json_has (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 34,
+            "unit": "allocs/op",
+            "extra": "321022 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/json_comparison (github.com/observeinc/cel2sql/v3)",
+            "value": 4059,
+            "unit": "ns/op\t    2344 B/op\t      39 allocs/op",
+            "extra": "288625 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/json_comparison (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 4059,
+            "unit": "ns/op",
+            "extra": "288625 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/json_comparison (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2344,
+            "unit": "B/op",
+            "extra": "288625 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/json_comparison (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 39,
+            "unit": "allocs/op",
+            "extra": "288625 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/complex_json (github.com/observeinc/cel2sql/v3)",
+            "value": 8129,
+            "unit": "ns/op\t    4248 B/op\t      73 allocs/op",
+            "extra": "143091 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/complex_json (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 8129,
+            "unit": "ns/op",
+            "extra": "143091 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/complex_json (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 4248,
+            "unit": "B/op",
+            "extra": "143091 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertJSONPath/complex_json (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 73,
+            "unit": "allocs/op",
+            "extra": "143091 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/simple_pattern (github.com/observeinc/cel2sql/v3)",
+            "value": 9048,
+            "unit": "ns/op\t    6210 B/op\t      79 allocs/op",
+            "extra": "130076 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/simple_pattern (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 9048,
+            "unit": "ns/op",
+            "extra": "130076 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/simple_pattern (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 6210,
+            "unit": "B/op",
+            "extra": "130076 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/simple_pattern (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 79,
+            "unit": "allocs/op",
+            "extra": "130076 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/case_insensitive (github.com/observeinc/cel2sql/v3)",
+            "value": 8644,
+            "unit": "ns/op\t    6205 B/op\t      79 allocs/op",
+            "extra": "135739 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/case_insensitive (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 8644,
+            "unit": "ns/op",
+            "extra": "135739 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/case_insensitive (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 6205,
+            "unit": "B/op",
+            "extra": "135739 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/case_insensitive (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 79,
+            "unit": "allocs/op",
+            "extra": "135739 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/complex_pattern (github.com/observeinc/cel2sql/v3)",
+            "value": 8965,
+            "unit": "ns/op\t    6222 B/op\t      79 allocs/op",
+            "extra": "131473 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/complex_pattern (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 8965,
+            "unit": "ns/op",
+            "extra": "131473 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/complex_pattern (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 6222,
+            "unit": "B/op",
+            "extra": "131473 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/complex_pattern (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 79,
+            "unit": "allocs/op",
+            "extra": "131473 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/with_digit_class (github.com/observeinc/cel2sql/v3)",
+            "value": 8693,
+            "unit": "ns/op\t    6227 B/op\t      80 allocs/op",
+            "extra": "134833 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/with_digit_class (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 8693,
+            "unit": "ns/op",
+            "extra": "134833 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/with_digit_class (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 6227,
+            "unit": "B/op",
+            "extra": "134833 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/with_digit_class (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 80,
+            "unit": "allocs/op",
+            "extra": "134833 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/with_word_class (github.com/observeinc/cel2sql/v3)",
+            "value": 8462,
+            "unit": "ns/op\t    6222 B/op\t      80 allocs/op",
+            "extra": "137547 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/with_word_class (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 8462,
+            "unit": "ns/op",
+            "extra": "137547 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/with_word_class (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 6222,
+            "unit": "B/op",
+            "extra": "137547 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/with_word_class (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 80,
+            "unit": "allocs/op",
+            "extra": "137547 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/with_word_boundary (github.com/observeinc/cel2sql/v3)",
+            "value": 8723,
+            "unit": "ns/op\t    6216 B/op\t      80 allocs/op",
+            "extra": "133629 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/with_word_boundary (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 8723,
+            "unit": "ns/op",
+            "extra": "133629 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/with_word_boundary (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 6216,
+            "unit": "B/op",
+            "extra": "133629 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertRegex/with_word_boundary (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 80,
+            "unit": "allocs/op",
+            "extra": "133629 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_and_5 (github.com/observeinc/cel2sql/v3)",
+            "value": 10371,
+            "unit": "ns/op\t    6896 B/op\t     112 allocs/op",
+            "extra": "112654 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_and_5 (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 10371,
+            "unit": "ns/op",
+            "extra": "112654 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_and_5 (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 6896,
+            "unit": "B/op",
+            "extra": "112654 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_and_5 (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 112,
+            "unit": "allocs/op",
+            "extra": "112654 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_and_10 (github.com/observeinc/cel2sql/v3)",
+            "value": 20171,
+            "unit": "ns/op\t   13801 B/op\t     208 allocs/op",
+            "extra": "59791 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_and_10 (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 20171,
+            "unit": "ns/op",
+            "extra": "59791 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_and_10 (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 13801,
+            "unit": "B/op",
+            "extra": "59791 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_and_10 (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 208,
+            "unit": "allocs/op",
+            "extra": "59791 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_parentheses_5 (github.com/observeinc/cel2sql/v3)",
+            "value": 2342,
+            "unit": "ns/op\t    1848 B/op\t      27 allocs/op",
+            "extra": "453674 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_parentheses_5 (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 2342,
+            "unit": "ns/op",
+            "extra": "453674 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_parentheses_5 (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 1848,
+            "unit": "B/op",
+            "extra": "453674 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_parentheses_5 (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 27,
+            "unit": "allocs/op",
+            "extra": "453674 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_ternary (github.com/observeinc/cel2sql/v3)",
+            "value": 8929,
+            "unit": "ns/op\t    6104 B/op\t     101 allocs/op",
+            "extra": "132158 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_ternary (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 8929,
+            "unit": "ns/op",
+            "extra": "132158 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_ternary (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 6104,
+            "unit": "B/op",
+            "extra": "132158 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_ternary (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 101,
+            "unit": "allocs/op",
+            "extra": "132158 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_arithmetic (github.com/observeinc/cel2sql/v3)",
+            "value": 5855,
+            "unit": "ns/op\t    3960 B/op\t      69 allocs/op",
+            "extra": "198501 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_arithmetic (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 5855,
+            "unit": "ns/op",
+            "extra": "198501 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_arithmetic (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 3960,
+            "unit": "B/op",
+            "extra": "198501 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertDeeplyNested/nested_arithmetic (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 69,
+            "unit": "allocs/op",
+            "extra": "198501 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertLargeExpression/mixed_conditions_20 (github.com/observeinc/cel2sql/v3)",
+            "value": 44414,
+            "unit": "ns/op\t   29708 B/op\t     446 allocs/op",
+            "extra": "26946 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertLargeExpression/mixed_conditions_20 (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 44414,
+            "unit": "ns/op",
+            "extra": "26946 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertLargeExpression/mixed_conditions_20 (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 29708,
+            "unit": "B/op",
+            "extra": "26946 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertLargeExpression/mixed_conditions_20 (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 446,
+            "unit": "allocs/op",
+            "extra": "26946 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertLargeExpression/large_and_chain (github.com/observeinc/cel2sql/v3)",
+            "value": 41858,
+            "unit": "ns/op\t   28003 B/op\t     419 allocs/op",
+            "extra": "29116 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertLargeExpression/large_and_chain (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 41858,
+            "unit": "ns/op",
+            "extra": "29116 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertLargeExpression/large_and_chain (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 28003,
+            "unit": "B/op",
+            "extra": "29116 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertLargeExpression/large_and_chain (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 419,
+            "unit": "allocs/op",
+            "extra": "29116 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertTimestamps/timestamp_comparison (github.com/observeinc/cel2sql/v3)",
+            "value": 3995,
+            "unit": "ns/op\t    2784 B/op\t      48 allocs/op",
+            "extra": "285145 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertTimestamps/timestamp_comparison (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3995,
+            "unit": "ns/op",
+            "extra": "285145 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertTimestamps/timestamp_comparison (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2784,
+            "unit": "B/op",
+            "extra": "285145 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertTimestamps/timestamp_comparison (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 48,
+            "unit": "allocs/op",
+            "extra": "285145 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertTimestamps/date_function (github.com/observeinc/cel2sql/v3)",
+            "value": 1990,
+            "unit": "ns/op\t    1752 B/op\t      28 allocs/op",
+            "extra": "575318 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertTimestamps/date_function (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 1990,
+            "unit": "ns/op",
+            "extra": "575318 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertTimestamps/date_function (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 1752,
+            "unit": "B/op",
+            "extra": "575318 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertTimestamps/date_function (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 28,
+            "unit": "allocs/op",
+            "extra": "575318 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertTimestamps/datetime_function (github.com/observeinc/cel2sql/v3)",
+            "value": 2023,
+            "unit": "ns/op\t    1752 B/op\t      28 allocs/op",
+            "extra": "519393 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertTimestamps/datetime_function (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 2023,
+            "unit": "ns/op",
+            "extra": "519393 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertTimestamps/datetime_function (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 1752,
+            "unit": "B/op",
+            "extra": "519393 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertTimestamps/datetime_function (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 28,
+            "unit": "allocs/op",
+            "extra": "519393 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/startsWith (github.com/observeinc/cel2sql/v3)",
+            "value": 2419,
+            "unit": "ns/op\t    1912 B/op\t      30 allocs/op",
+            "extra": "443406 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/startsWith (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 2419,
+            "unit": "ns/op",
+            "extra": "443406 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/startsWith (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 1912,
+            "unit": "B/op",
+            "extra": "443406 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/startsWith (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 30,
+            "unit": "allocs/op",
+            "extra": "443406 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/endsWith (github.com/observeinc/cel2sql/v3)",
+            "value": 2452,
+            "unit": "ns/op\t    1912 B/op\t      30 allocs/op",
+            "extra": "443661 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/endsWith (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 2452,
+            "unit": "ns/op",
+            "extra": "443661 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/endsWith (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 1912,
+            "unit": "B/op",
+            "extra": "443661 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/endsWith (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 30,
+            "unit": "allocs/op",
+            "extra": "443661 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/contains (github.com/observeinc/cel2sql/v3)",
+            "value": 2471,
+            "unit": "ns/op\t    1976 B/op\t      31 allocs/op",
+            "extra": "443085 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/contains (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 2471,
+            "unit": "ns/op",
+            "extra": "443085 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/contains (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 1976,
+            "unit": "B/op",
+            "extra": "443085 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/contains (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 31,
+            "unit": "allocs/op",
+            "extra": "443085 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/concatenation (github.com/observeinc/cel2sql/v3)",
+            "value": 3589,
+            "unit": "ns/op\t    2576 B/op\t      44 allocs/op",
+            "extra": "317679 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/concatenation (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3589,
+            "unit": "ns/op",
+            "extra": "317679 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/concatenation (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2576,
+            "unit": "B/op",
+            "extra": "317679 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/concatenation (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 44,
+            "unit": "allocs/op",
+            "extra": "317679 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/multiple_string_ops (github.com/observeinc/cel2sql/v3)",
+            "value": 6655,
+            "unit": "ns/op\t    4480 B/op\t      78 allocs/op",
+            "extra": "178962 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/multiple_string_ops (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 6655,
+            "unit": "ns/op",
+            "extra": "178962 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/multiple_string_ops (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 4480,
+            "unit": "B/op",
+            "extra": "178962 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/multiple_string_ops (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 78,
+            "unit": "allocs/op",
+            "extra": "178962 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/split_basic (github.com/observeinc/cel2sql/v3)",
+            "value": 5002,
+            "unit": "ns/op\t    2904 B/op\t      49 allocs/op",
+            "extra": "235654 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/split_basic (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 5002,
+            "unit": "ns/op",
+            "extra": "235654 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/split_basic (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2904,
+            "unit": "B/op",
+            "extra": "235654 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/split_basic (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 49,
+            "unit": "allocs/op",
+            "extra": "235654 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/split_with_limit (github.com/observeinc/cel2sql/v3)",
+            "value": 4585,
+            "unit": "ns/op\t    3056 B/op\t      53 allocs/op",
+            "extra": "248784 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/split_with_limit (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 4585,
+            "unit": "ns/op",
+            "extra": "248784 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/split_with_limit (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 3056,
+            "unit": "B/op",
+            "extra": "248784 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/split_with_limit (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 53,
+            "unit": "allocs/op",
+            "extra": "248784 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/join_basic (github.com/observeinc/cel2sql/v3)",
+            "value": 3208,
+            "unit": "ns/op\t    2584 B/op\t      49 allocs/op",
+            "extra": "355825 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/join_basic (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3208,
+            "unit": "ns/op",
+            "extra": "355825 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/join_basic (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2584,
+            "unit": "B/op",
+            "extra": "355825 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/join_basic (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 49,
+            "unit": "allocs/op",
+            "extra": "355825 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/join_no_delimiter (github.com/observeinc/cel2sql/v3)",
+            "value": 2926,
+            "unit": "ns/op\t    2384 B/op\t      42 allocs/op",
+            "extra": "393079 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/join_no_delimiter (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 2926,
+            "unit": "ns/op",
+            "extra": "393079 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/join_no_delimiter (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2384,
+            "unit": "B/op",
+            "extra": "393079 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/join_no_delimiter (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 42,
+            "unit": "allocs/op",
+            "extra": "393079 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/format_simple (github.com/observeinc/cel2sql/v3)",
+            "value": 3515,
+            "unit": "ns/op\t    2504 B/op\t      45 allocs/op",
+            "extra": "325596 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/format_simple (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3515,
+            "unit": "ns/op",
+            "extra": "325596 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/format_simple (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2504,
+            "unit": "B/op",
+            "extra": "325596 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/format_simple (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 45,
+            "unit": "allocs/op",
+            "extra": "325596 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/format_multiple_args (github.com/observeinc/cel2sql/v3)",
+            "value": 3115,
+            "unit": "ns/op\t    2392 B/op\t      45 allocs/op",
+            "extra": "354764 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/format_multiple_args (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3115,
+            "unit": "ns/op",
+            "extra": "354764 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/format_multiple_args (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2392,
+            "unit": "B/op",
+            "extra": "354764 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertStringOperations/format_multiple_args (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 45,
+            "unit": "allocs/op",
+            "extra": "354764 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/simple_comparison (github.com/observeinc/cel2sql/v3)",
+            "value": 7206,
+            "unit": "ns/op\t    5217 B/op\t      83 allocs/op",
+            "extra": "163599 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/simple_comparison (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 7206,
+            "unit": "ns/op",
+            "extra": "163599 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/simple_comparison (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 5217,
+            "unit": "B/op",
+            "extra": "163599 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/simple_comparison (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 83,
+            "unit": "allocs/op",
+            "extra": "163599 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/json_path (github.com/observeinc/cel2sql/v3)",
+            "value": 7015,
+            "unit": "ns/op\t    4904 B/op\t      79 allocs/op",
+            "extra": "169024 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/json_path (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 7015,
+            "unit": "ns/op",
+            "extra": "169024 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/json_path (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 4904,
+            "unit": "B/op",
+            "extra": "169024 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/json_path (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 79,
+            "unit": "allocs/op",
+            "extra": "169024 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/regex_pattern (github.com/observeinc/cel2sql/v3)",
+            "value": 13301,
+            "unit": "ns/op\t    9371 B/op\t     129 allocs/op",
+            "extra": "89914 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/regex_pattern (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 13301,
+            "unit": "ns/op",
+            "extra": "89914 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/regex_pattern (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 9371,
+            "unit": "B/op",
+            "extra": "89914 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/regex_pattern (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 129,
+            "unit": "allocs/op",
+            "extra": "89914 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/array_operation (github.com/observeinc/cel2sql/v3)",
+            "value": 7826,
+            "unit": "ns/op\t    5601 B/op\t      94 allocs/op",
+            "extra": "145052 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/array_operation (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 7826,
+            "unit": "ns/op",
+            "extra": "145052 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/array_operation (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 5601,
+            "unit": "B/op",
+            "extra": "145052 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/array_operation (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 94,
+            "unit": "allocs/op",
+            "extra": "145052 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/complex_query (github.com/observeinc/cel2sql/v3)",
+            "value": 23912,
+            "unit": "ns/op\t   15095 B/op\t     236 allocs/op",
+            "extra": "50002 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/complex_query (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 23912,
+            "unit": "ns/op",
+            "extra": "50002 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/complex_query (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 15095,
+            "unit": "B/op",
+            "extra": "50002 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAnalyzeQuery/complex_query (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 236,
+            "unit": "allocs/op",
+            "extra": "50002 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/no_options (github.com/observeinc/cel2sql/v3)",
+            "value": 3117,
+            "unit": "ns/op\t    2128 B/op\t      34 allocs/op",
+            "extra": "364532 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/no_options (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3117,
+            "unit": "ns/op",
+            "extra": "364532 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/no_options (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2128,
+            "unit": "B/op",
+            "extra": "364532 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/no_options (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 34,
+            "unit": "allocs/op",
+            "extra": "364532 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/with_schemas (github.com/observeinc/cel2sql/v3)",
+            "value": 3127,
+            "unit": "ns/op\t    2128 B/op\t      34 allocs/op",
+            "extra": "362523 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/with_schemas (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3127,
+            "unit": "ns/op",
+            "extra": "362523 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/with_schemas (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2128,
+            "unit": "B/op",
+            "extra": "362523 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/with_schemas (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 34,
+            "unit": "allocs/op",
+            "extra": "362523 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/with_max_depth (github.com/observeinc/cel2sql/v3)",
+            "value": 3097,
+            "unit": "ns/op\t    2128 B/op\t      34 allocs/op",
+            "extra": "369466 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/with_max_depth (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3097,
+            "unit": "ns/op",
+            "extra": "369466 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/with_max_depth (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2128,
+            "unit": "B/op",
+            "extra": "369466 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/with_max_depth (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 34,
+            "unit": "allocs/op",
+            "extra": "369466 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/with_max_output (github.com/observeinc/cel2sql/v3)",
+            "value": 3094,
+            "unit": "ns/op\t    2128 B/op\t      34 allocs/op",
+            "extra": "366630 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/with_max_output (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3094,
+            "unit": "ns/op",
+            "extra": "366630 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/with_max_output (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2128,
+            "unit": "B/op",
+            "extra": "366630 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/with_max_output (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 34,
+            "unit": "allocs/op",
+            "extra": "366630 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/all_options (github.com/observeinc/cel2sql/v3)",
+            "value": 3090,
+            "unit": "ns/op\t    2128 B/op\t      34 allocs/op",
+            "extra": "373860 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/all_options (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 3090,
+            "unit": "ns/op",
+            "extra": "373860 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/all_options (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 2128,
+            "unit": "B/op",
+            "extra": "373860 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkConvertWithOptions/all_options (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 34,
+            "unit": "allocs/op",
+            "extra": "373860 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkParameterizedVsInline/Parameterized (github.com/observeinc/cel2sql/v3)",
+            "value": 504461,
+            "unit": "ns/op\t   14400 B/op\t    1718 allocs/op",
+            "extra": "2344 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkParameterizedVsInline/Parameterized (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 504461,
+            "unit": "ns/op",
+            "extra": "2344 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkParameterizedVsInline/Parameterized (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 14400,
+            "unit": "B/op",
+            "extra": "2344 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkParameterizedVsInline/Parameterized (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 1718,
+            "unit": "allocs/op",
+            "extra": "2344 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkParameterizedVsInline/Inline (github.com/observeinc/cel2sql/v3)",
+            "value": 433484,
+            "unit": "ns/op\t   14088 B/op\t    1710 allocs/op",
+            "extra": "2739 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkParameterizedVsInline/Inline (github.com/observeinc/cel2sql/v3) - ns/op",
+            "value": 433484,
+            "unit": "ns/op",
+            "extra": "2739 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkParameterizedVsInline/Inline (github.com/observeinc/cel2sql/v3) - B/op",
+            "value": 14088,
+            "unit": "B/op",
+            "extra": "2739 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkParameterizedVsInline/Inline (github.com/observeinc/cel2sql/v3) - allocs/op",
+            "value": 1710,
+            "unit": "allocs/op",
+            "extra": "2739 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldLookup_Small (github.com/observeinc/cel2sql/v3/pg)",
+            "value": 540.5,
+            "unit": "ns/op\t     112 B/op\t       5 allocs/op",
+            "extra": "2205744 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldLookup_Small (github.com/observeinc/cel2sql/v3/pg) - ns/op",
+            "value": 540.5,
+            "unit": "ns/op",
+            "extra": "2205744 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldLookup_Small (github.com/observeinc/cel2sql/v3/pg) - B/op",
+            "value": 112,
+            "unit": "B/op",
+            "extra": "2205744 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldLookup_Small (github.com/observeinc/cel2sql/v3/pg) - allocs/op",
+            "value": 5,
+            "unit": "allocs/op",
+            "extra": "2205744 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldLookup_Medium (github.com/observeinc/cel2sql/v3/pg)",
+            "value": 545.7,
+            "unit": "ns/op\t     112 B/op\t       5 allocs/op",
+            "extra": "2198702 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldLookup_Medium (github.com/observeinc/cel2sql/v3/pg) - ns/op",
+            "value": 545.7,
+            "unit": "ns/op",
+            "extra": "2198702 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldLookup_Medium (github.com/observeinc/cel2sql/v3/pg) - B/op",
+            "value": 112,
+            "unit": "B/op",
+            "extra": "2198702 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldLookup_Medium (github.com/observeinc/cel2sql/v3/pg) - allocs/op",
+            "value": 5,
+            "unit": "allocs/op",
+            "extra": "2198702 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldLookup_Large (github.com/observeinc/cel2sql/v3/pg)",
+            "value": 578.8,
+            "unit": "ns/op\t     112 B/op\t       5 allocs/op",
+            "extra": "2225011 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldLookup_Large (github.com/observeinc/cel2sql/v3/pg) - ns/op",
+            "value": 578.8,
+            "unit": "ns/op",
+            "extra": "2225011 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldLookup_Large (github.com/observeinc/cel2sql/v3/pg) - B/op",
+            "value": 112,
+            "unit": "B/op",
+            "extra": "2225011 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldLookup_Large (github.com/observeinc/cel2sql/v3/pg) - allocs/op",
+            "value": 5,
+            "unit": "allocs/op",
+            "extra": "2225011 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldNames_Small (github.com/observeinc/cel2sql/v3/pg)",
+            "value": 148.8,
+            "unit": "ns/op\t     176 B/op\t       2 allocs/op",
+            "extra": "8056366 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldNames_Small (github.com/observeinc/cel2sql/v3/pg) - ns/op",
+            "value": 148.8,
+            "unit": "ns/op",
+            "extra": "8056366 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldNames_Small (github.com/observeinc/cel2sql/v3/pg) - B/op",
+            "value": 176,
+            "unit": "B/op",
+            "extra": "8056366 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldNames_Small (github.com/observeinc/cel2sql/v3/pg) - allocs/op",
+            "value": 2,
+            "unit": "allocs/op",
+            "extra": "8056366 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldNames_Large (github.com/observeinc/cel2sql/v3/pg)",
+            "value": 7678,
+            "unit": "ns/op\t   16400 B/op\t       2 allocs/op",
+            "extra": "159496 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldNames_Large (github.com/observeinc/cel2sql/v3/pg) - ns/op",
+            "value": 7678,
+            "unit": "ns/op",
+            "extra": "159496 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldNames_Large (github.com/observeinc/cel2sql/v3/pg) - B/op",
+            "value": 16400,
+            "unit": "B/op",
+            "extra": "159496 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkFieldNames_Large (github.com/observeinc/cel2sql/v3/pg) - allocs/op",
+            "value": 2,
+            "unit": "allocs/op",
+            "extra": "159496 times\n4 procs"
           }
         ]
       }
