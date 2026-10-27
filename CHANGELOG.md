@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Fixed
+- **Comprehension variables named like an aliased variable or column**
+  - `WithColumnAliases` applied to every identifier, a comprehension's iteration variable included, so a variable that shadowed an aliased variable read the row's column instead of each element. With `name` aliased to `obj_name`, `items.exists(name, name == "x")` became `EXISTS (SELECT 1 FROM UNNEST(obj_items) AS name WHERE obj_name = 'x')`, true or false for the whole row. An iteration variable is now never aliased inside the predicate, transform or filter it is bound in; its range, which CEL keeps outside its scope, is aliased as before.
+  - A variable named like a column an alias writes captured that column: in `tags.exists(obj_name, obj_name == "t" && name == "x")` both comparisons read the element, since the source was named `obj_name` and the `name` read was written `obj_name` too. Such a variable is now written with underscores appended (`obj_name_`) until no alias, and no enclosing variable of another name, writes it.
+  - Every other expression converts exactly as before in all dialects. Verified against PostgreSQL 17 through both `Convert` and `ConvertParameterized`: for every filter in the integration test, PostgreSQL selects exactly the rows cel-go evaluates to true.
 - **Object-tag filters on list-valued JSON variables (PostgreSQL)**
   - A `WithJSONVariables` variable whose values are lists of strings, such as `map<string, list<string>>` object tags, now converts the filters an object-tag filter is built from. Every value was read with `->>` as text, so `"prod" in tags["env"]` became `$1 = ANY(tags->>'env')`; a test of the map's own keys, `"env" in tags`, became the unparseable `$1 IN tags`, and `has(tags.env)` a column reference. Now:
     - `"k" in v` and `has(v.k)`: `v ? 'k'`

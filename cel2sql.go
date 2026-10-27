@@ -145,6 +145,12 @@ func WithJSONVariables(vars ...string) ConvertOption {
 // column. Declare the dotted name as a variable so the checker resolves it,
 // then alias it here like any other name.
 //
+// A comprehension's iteration variable is never aliased: inside its predicate,
+// transform and filter it shadows a variable of the same name, as in CEL, so
+// with name aliased, tags.exists(name, name == "x") compares each element. A
+// variable named like a column an alias writes is written under another name,
+// so that the column, read in the same predicate, still reads the row.
+//
 // Example:
 //
 //	result, err := cel2sql.ConvertParameterized(ast,
@@ -443,6 +449,9 @@ type converter struct {
 	parameterize       bool            // Enable parameterized output
 	parameters         []any           // Collected parameters for parameterized queries
 	paramCount         int             // Parameter counter for placeholders
+
+	// Iteration variables in scope, innermost last; see comprehension_scope.go.
+	comprehensionVars []comprehensionVar
 }
 
 // checkContext checks if the context has been cancelled or expired.
@@ -2169,17 +2178,18 @@ func (con *converter) visitAllComprehension(expr *exprpb.Expr, info *Comprehensi
 	if comprehension == nil {
 		return newConversionError(errMsgUnsupportedComprehension, "expression is not a comprehension (ALL)")
 	}
+	iterVar := con.comprehensionVarSQLName(info.IterVar)
 
 	iterRange := comprehension.GetIterRange()
 
 	con.str.WriteString("NOT EXISTS (SELECT 1 FROM ")
-	if err := con.writeComprehensionSource(iterRange, info.IterVar); err != nil {
+	if err := con.writeComprehensionSource(iterRange, iterVar); err != nil {
 		return wrapConversionError(err, "visiting iter range in ALL comprehension")
 	}
 
 	if info.Predicate != nil {
 		con.str.WriteString(" WHERE NOT (")
-		if err := con.visit(info.Predicate); err != nil {
+		if err := con.visitInComprehensionScope(info.IterVar, iterVar, info.Predicate); err != nil {
 			return wrapConversionError(err, "visiting predicate in ALL comprehension")
 		}
 		con.str.WriteString(")")
@@ -2194,17 +2204,18 @@ func (con *converter) visitExistsComprehension(expr *exprpb.Expr, info *Comprehe
 	if comprehension == nil {
 		return newConversionError(errMsgUnsupportedComprehension, "expression is not a comprehension (EXISTS)")
 	}
+	iterVar := con.comprehensionVarSQLName(info.IterVar)
 
 	iterRange := comprehension.GetIterRange()
 
 	con.str.WriteString("EXISTS (SELECT 1 FROM ")
-	if err := con.writeComprehensionSource(iterRange, info.IterVar); err != nil {
+	if err := con.writeComprehensionSource(iterRange, iterVar); err != nil {
 		return wrapConversionError(err, "visiting iter range in EXISTS comprehension")
 	}
 
 	if info.Predicate != nil {
 		con.str.WriteString(" WHERE ")
-		if err := con.visit(info.Predicate); err != nil {
+		if err := con.visitInComprehensionScope(info.IterVar, iterVar, info.Predicate); err != nil {
 			return wrapConversionError(err, "visiting predicate in EXISTS comprehension")
 		}
 	}
@@ -2218,17 +2229,18 @@ func (con *converter) visitExistsOneComprehension(expr *exprpb.Expr, info *Compr
 	if comprehension == nil {
 		return newConversionError(errMsgUnsupportedComprehension, "expression is not a comprehension (EXISTS_ONE)")
 	}
+	iterVar := con.comprehensionVarSQLName(info.IterVar)
 
 	iterRange := comprehension.GetIterRange()
 
 	con.str.WriteString("(SELECT COUNT(*) FROM ")
-	if err := con.writeComprehensionSource(iterRange, info.IterVar); err != nil {
+	if err := con.writeComprehensionSource(iterRange, iterVar); err != nil {
 		return wrapConversionError(err, "visiting iter range in EXISTS_ONE comprehension")
 	}
 
 	if info.Predicate != nil {
 		con.str.WriteString(" WHERE ")
-		if err := con.visit(info.Predicate); err != nil {
+		if err := con.visitInComprehensionScope(info.IterVar, iterVar, info.Predicate); err != nil {
 			return wrapConversionError(err, "visiting predicate in EXISTS_ONE comprehension")
 		}
 	}
@@ -2242,26 +2254,27 @@ func (con *converter) visitMapComprehension(expr *exprpb.Expr, info *Comprehensi
 	if comprehension == nil {
 		return newConversionError(errMsgUnsupportedComprehension, "expression is not a comprehension (MAP)")
 	}
+	iterVar := con.comprehensionVarSQLName(info.IterVar)
 
 	iterRange := comprehension.GetIterRange()
 
 	con.dialect.WriteArraySubqueryOpen(&con.str)
 	if info.Transform != nil {
-		if err := con.visit(info.Transform); err != nil {
+		if err := con.visitInComprehensionScope(info.IterVar, iterVar, info.Transform); err != nil {
 			return wrapConversionError(err, "visiting transform in MAP comprehension")
 		}
 	} else {
-		con.str.WriteString(info.IterVar)
+		con.str.WriteString(iterVar)
 	}
 	con.dialect.WriteArraySubqueryExprClose(&con.str)
 	con.str.WriteString(" FROM ")
-	if err := con.writeComprehensionSource(iterRange, info.IterVar); err != nil {
+	if err := con.writeComprehensionSource(iterRange, iterVar); err != nil {
 		return wrapConversionError(err, "visiting iter range in MAP comprehension")
 	}
 
 	if info.Filter != nil {
 		con.str.WriteString(" WHERE ")
-		if err := con.visit(info.Filter); err != nil {
+		if err := con.visitInComprehensionScope(info.IterVar, iterVar, info.Filter); err != nil {
 			return wrapConversionError(err, "visiting filter in MAP comprehension")
 		}
 	}
@@ -2275,20 +2288,21 @@ func (con *converter) visitFilterComprehension(expr *exprpb.Expr, info *Comprehe
 	if comprehension == nil {
 		return newConversionError(errMsgUnsupportedComprehension, "expression is not a comprehension (FILTER)")
 	}
+	iterVar := con.comprehensionVarSQLName(info.IterVar)
 
 	iterRange := comprehension.GetIterRange()
 
 	con.dialect.WriteArraySubqueryOpen(&con.str)
-	con.str.WriteString(info.IterVar)
+	con.str.WriteString(iterVar)
 	con.dialect.WriteArraySubqueryExprClose(&con.str)
 	con.str.WriteString(" FROM ")
-	if err := con.writeComprehensionSource(iterRange, info.IterVar); err != nil {
+	if err := con.writeComprehensionSource(iterRange, iterVar); err != nil {
 		return wrapConversionError(err, "visiting iter range in FILTER comprehension")
 	}
 
 	if info.Predicate != nil {
 		con.str.WriteString(" WHERE ")
-		if err := con.visit(info.Predicate); err != nil {
+		if err := con.visitInComprehensionScope(info.IterVar, iterVar, info.Predicate); err != nil {
 			return wrapConversionError(err, "visiting predicate in FILTER comprehension")
 		}
 	}
@@ -2302,24 +2316,25 @@ func (con *converter) visitTransformListComprehension(expr *exprpb.Expr, info *C
 	if comprehension == nil {
 		return newConversionError(errMsgUnsupportedComprehension, "expression is not a comprehension (TRANSFORM_LIST)")
 	}
+	iterVar := con.comprehensionVarSQLName(info.IterVar)
 
 	con.dialect.WriteArraySubqueryOpen(&con.str)
 	if info.Transform != nil {
-		if err := con.visit(info.Transform); err != nil {
+		if err := con.visitInComprehensionScope(info.IterVar, iterVar, info.Transform); err != nil {
 			return wrapConversionError(err, "visiting transform in TRANSFORM_LIST comprehension")
 		}
 	} else {
-		con.str.WriteString(info.IterVar)
+		con.str.WriteString(iterVar)
 	}
 	con.dialect.WriteArraySubqueryExprClose(&con.str)
 	con.str.WriteString(" FROM ")
-	if err := con.writeComprehensionSource(comprehension.GetIterRange(), info.IterVar); err != nil {
+	if err := con.writeComprehensionSource(comprehension.GetIterRange(), iterVar); err != nil {
 		return wrapConversionError(err, "visiting iter range in TRANSFORM_LIST comprehension")
 	}
 
 	if info.Filter != nil {
 		con.str.WriteString(" WHERE ")
-		if err := con.visit(info.Filter); err != nil {
+		if err := con.visitInComprehensionScope(info.IterVar, iterVar, info.Filter); err != nil {
 			return wrapConversionError(err, "visiting filter in TRANSFORM_LIST comprehension")
 		}
 	}
@@ -2426,9 +2441,12 @@ func (con *converter) visitIdent(expr *exprpb.Expr) error {
 // alias when one is configured. A dotted name reaches here too, since the checker
 // resolves such a declaration to a variable rather than a field selection.
 func (con *converter) writeColumn(identName string) error {
-	// Apply column alias if configured.
+	// An iteration variable in scope shadows a variable of the same name and is
+	// never aliased; otherwise apply the column alias if configured.
 	sqlName := identName
-	if alias, ok := con.columnAlias[identName]; ok {
+	if v, ok := con.comprehensionVarInScope(identName); ok {
+		sqlName = v
+	} else if alias, ok := con.columnAlias[identName]; ok {
 		sqlName = alias
 	}
 
