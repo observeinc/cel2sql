@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- **A JSON variable's list value as a whole expression (PostgreSQL)**
+  - A `WithJSONVariables` list value that is the whole expression now converts to a `text[]` of its elements, for a caller that selects the list itself, for instance to unnest it and count each tag's values across rows. `v["k"]` and `v.k` are written `CASE WHEN jsonb_typeof(v->'k') = 'array' THEN ARRAY(SELECT jsonb_array_elements_text(v->'k')) END`, and `("k" in v ? v["k"] : [])`, as the webapp's ranked search writes a tag's values, the same way over its `CASE`. Both were conversion errors before. `v.map(k, k)`, a variable's keys, already converted to `ARRAY(SELECT k FROM jsonb_object_keys(v) AS k(k))`.
+  - The array is NULL where the key is absent, as CEL raises an error for it, so a row without the key contributes no element when the result is unnested; the empty list is an empty array.
+  - Only the whole expression changes. A list value inside an expression, such as `size(v["k"])` or `[v.k]`, is still refused: `size()` and a comprehension would read the NULL as an empty list, so `size(v["k"]) == 0` would match a row with no `k`. A list of something other than strings is refused as before, and other dialects are unchanged.
+  - Verified against PostgreSQL 17 through both `Convert` and `ConvertParameterized`: for every expression in the integration test, each row's array is the list cel-go evaluates, NULL where cel-go raises an error, and unnesting it counts the same elements.
+
 ### Fixed
 - **Object-tag filters on list-valued JSON variables (PostgreSQL)**
   - A `WithJSONVariables` variable whose values are lists of strings, such as `map<string, list<string>>` object tags, now converts the filters an object-tag filter is built from. Every value was read with `->>` as text, so `"prod" in tags["env"]` became `$1 = ANY(tags->>'env')`; a test of the map's own keys, `"env" in tags`, became the unparseable `$1 IN tags`, and `has(tags.env)` a column reference. Now:

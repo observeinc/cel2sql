@@ -22,12 +22,14 @@ import (
 //	v.k.exists(e, p), list(string)  GUARD(v->'k', EXISTS (SELECT 1 FROM jsonb_array_elements_text(v->'k') AS e(e) WHERE p))
 //	(c ? v.k : []).exists(e, p)     as above, over CASE WHEN c THEN v->'k' ELSE '[]'::jsonb END
 //	v.exists(k, p), v.map(k, k)     over jsonb_object_keys(v) AS k(k)
+//	v.k, (c ? v.k : []), whole      GUARD(a, ARRAY(SELECT jsonb_array_elements_text(a))), a text[]
 //
 // The guard makes a read of an absent key NULL, as CEL raises an error for it, so
-// !v.env.exists(e, e == "prod") does not match a row with no env. Any other use
-// of a list value, filter() and map() over it included, is refused, as is
-// comparing v with a map literal. A dialect without dialect.JSONContainerWriter
-// converts all of these exactly as it did before.
+// !v.env.exists(e, e == "prod") does not match a row with no env. A list value is
+// written as a value only when it is the whole expression, whose caller reads the
+// NULL as no list. Any other use of a list value, filter() and map() over it
+// included, is refused, as is comparing v with a map literal. A dialect without
+// dialect.JSONContainerWriter converts all of these exactly as it did before.
 
 // jsonVariableValue is one read of a JSON variable's value, v.k or v["k"].
 type jsonVariableValue struct {
@@ -249,6 +251,43 @@ func (con *converter) writeJSONSourceAlias(iterVar string) {
 	con.str.WriteString("(")
 	con.str.WriteString(iterVar)
 	con.str.WriteString(")")
+}
+
+// visitRoot visits the whole expression being converted, where a list value of
+// a JSON variable is written as a text array; see writeJSONVariableListResult.
+func (con *converter) visitRoot(expr *exprpb.Expr) error {
+	if handled, err := con.writeJSONVariableListResult(expr); handled || err != nil {
+		return err
+	}
+	return con.visit(expr)
+}
+
+// writeJSONVariableListResult writes a whole expression that is a JSON array
+// range, v.k or ("k" in v ? v["k"] : []), as a text array of its elements. The
+// array is NULL where the key is absent, where CEL raises an error, so a caller
+// that unnests the result to count its elements counts nothing for that row.
+// The same NULL inside an expression would be read as an empty list by size()
+// or a comprehension, which is why a list value there is still refused. handled
+// is false for any other expression, and in a dialect without
+// dialect.JSONContainerWriter.
+func (con *converter) writeJSONVariableListResult(expr *exprpb.Expr) (handled bool, err error) {
+	w, ok := dialect.GetJSONContainerWriter(con.dialect)
+	if !ok {
+		return false, nil
+	}
+	write, ok, err := con.jsonListRange(w, expr)
+	if !ok || err != nil {
+		return ok, err
+	}
+	return true, w.WriteJSONArrayGuard(&con.str, write, func() error {
+		con.dialect.WriteArraySubqueryOpen(&con.str)
+		if err := con.dialect.WriteJSONArrayElements(&con.str, true, true, write); err != nil {
+			return err
+		}
+		con.dialect.WriteArraySubqueryExprClose(&con.str)
+		con.str.WriteString(")")
+		return nil
+	})
 }
 
 // visitJSONVariableHas writes has(v.k) on a JSON variable. handled is false when

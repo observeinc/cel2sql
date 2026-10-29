@@ -111,11 +111,13 @@ func WithSchemas(schemas map[string]schema.Schema) ConvertOption {
 // and, for a list value, membership (x in v["k"]) and iteration with exists(),
 // all() or exists_one() (v["k"].exists(e, ...), also as
 // ("k" in v ? v["k"] : []).exists(e, ...)). A read of an absent key is NULL, the
-// SQL counterpart of the error CEL raises for it. Any other use of a list or map
-// value read from the variable (v.k, v["k"]), filter() and map() over it
-// included, is refused with a conversion error, as is comparing the variable
-// itself with a map literal (v == {}). Other uses of the variable itself are
-// written as before and are not checked. The other dialects convert all of these
+// SQL counterpart of the error CEL raises for it. A list value, or such a
+// ternary, that is the whole expression is written as a text array of its
+// elements, NULL where the key is absent. Any other use of a list or map value
+// read from the variable (v.k, v["k"]), filter() and map() over it included, is
+// refused with a conversion error, as is comparing the variable itself with a
+// map literal (v == {}). Other uses of the variable itself are written as before
+// and are not checked. The other dialects convert all of these
 // exactly as before. See dialect.JSONContainerWriter.
 //
 // Example:
@@ -319,7 +321,7 @@ func Convert(ast *cel.Ast, opts ...ConvertOption) (string, error) {
 		maxOutputLen: options.maxOutputLen,
 	}
 
-	if err := un.visit(checkedExpr.Expr); err != nil {
+	if err := un.visitRoot(checkedExpr.Expr); err != nil {
 		options.logger.Error("conversion failed", slog.Any("error", err))
 		return "", err
 	}
@@ -404,7 +406,7 @@ func ConvertParameterized(ast *cel.Ast, opts ...ConvertOption) (*Result, error) 
 		paramCount:   paramStart - 1, // First placeholder will be paramStart after first increment
 	}
 
-	if err := un.visit(checkedExpr.Expr); err != nil {
+	if err := un.visitRoot(checkedExpr.Expr); err != nil {
 		options.logger.Error("conversion failed", slog.Any("error", err))
 		return nil, err
 	}
