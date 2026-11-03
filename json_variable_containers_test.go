@@ -115,6 +115,31 @@ func TestJSONVariableContainers_PostgreSQL(t *testing.T) {
 			wantArgs: []any{"prod"},
 		},
 		{
+			// The whole expression, as a caller that unnests the result writes it:
+			// stats over each tag's values.
+			name:    "a list value as the whole expression",
+			expr:    `tags["env"]`,
+			wantSQL: guardEnv(`ARRAY(SELECT jsonb_array_elements_text(tags->'env'))`),
+		},
+		{
+			name:    "a list value as the whole expression, dot",
+			expr:    `tags.env`,
+			wantSQL: guardEnv(`ARRAY(SELECT jsonb_array_elements_text(tags->'env'))`),
+		},
+		{
+			// The webapp's ranked-search tag values, asked for as stats.
+			name: "a ternary over a list value as the whole expression",
+			expr: `("env" in tags ? tags["env"] : [])`,
+			wantSQL: `CASE WHEN jsonb_typeof(` + ternaryEnv + `) = 'array' THEN ` +
+				`ARRAY(SELECT jsonb_array_elements_text(` + ternaryEnv + `)) END`,
+		},
+		{
+			// The webapp's ranked-search tag keys, asked for as stats.
+			name:    "the map's keys as the whole expression",
+			expr:    `tags.map(k, k)`,
+			wantSQL: `ARRAY(SELECT k FROM jsonb_object_keys(tags) AS k(k))`,
+		},
+		{
 			name:     "a scalar value is still read as text",
 			expr:     `context.host == "web-1"`,
 			wantSQL:  `context->>'host' = $1`,
@@ -147,6 +172,8 @@ func TestJSONVariableContainers_Refused(t *testing.T) {
 		{name: "indexing a list value", expr: `tags["env"][0] == "prod"`},
 		{name: "size of a list value", expr: `size(tags["env"]) > 0`},
 		{name: "membership in a non-string list", expr: `1 in counts.ids`},
+		{name: "a non-string list as the whole expression", expr: `counts.ids`},
+		{name: "a list value inside a list literal", expr: `[tags.env]`},
 		{name: "a key that is not a literal", expr: `name in tags`, wantErr: cel2sql.ErrInvalidFieldName},
 		{name: "a ternary with a non-empty list literal", expr: `("env" in tags ? tags["env"] : ["x"]).exists(v, v == "x")`},
 		{name: "a ternary over list values as a value", expr: `size("env" in tags ? tags["env"] : []) > 0`},
@@ -184,6 +211,7 @@ func TestJSONVariableContainers_OtherDialects(t *testing.T) {
 		`size(tags.env.filter(v, v == "prod")) == 0`,
 		`!tags.env.map(v, v).exists(v, v == "prod")`,
 		`tags == {}`,
+		`tags.env`,
 	}
 
 	for _, d := range []dialectpkg.Dialect{mysqlDialect.New(), sqliteDialect.New(), duckdbDialect.New(), bigqueryDialect.New()} {
